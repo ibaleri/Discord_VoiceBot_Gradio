@@ -1,0 +1,59 @@
+# Discord Voice Bot - Gradio Version
+# Getestete und funktionierende Versionen (Stand: 2025-11-16)
+
+# MCP Client - Model Context Protocol
+fastmcp==2.13.0.2
+mcp==1.20.0
+
+# Web Interface
+gradio>=5.49.1  # Moderne Web-UI für den Bot (neueste stabile Version)
+brotli>=1.1.0  # Kompression für Gradio (seit 5.49.1 benötigt)
+
+# Discord API
+aiohttp==3.11.2
+discord.py==2.6.4
+
+# LLM Client - Universal LLM Interface (OpenAI, Groq, Gemini, Ollama)
+openai>=1.51.0
+groq>=0.5.0
+ollama>=0.1.9
+google-generativeai==0.8.5  # Weiterhin benötigt für llm_client Gemini-Support
+
+# Audio Recording & Processing
+# Hinweis: PyAudio wird für Gradio NICHT benötigt (Gradio hat eingebaute Audio-Unterstützung)
+# Nur behalten falls audio_recorder.py genutzt wird
+# pyaudio==0.2.14  # Optional: Für Mikrofon-Input mit AudioRecorder
+pydub==0.25.1    # Audio-Verarbeitung
+
+# Speech-to-Text
+# - Groq Whisper API (groq SDK unten) - schnell, online
+# - Faster Whisper (optional für lokales Speech-to-Text) - offline, langsamer
+faster-whisper>=1.0.0  # Lokales Whisper (optional, für SPEECH_PROVIDER=faster-whisper oder groq-fallback)
+
+# Time Parsing - Für natürliche Zeitangaben ("morgen 15 Uhr")
+dateparser==1.2.2  # Hauptbibliothek für natürliche Zeitangaben mit multi-language support
+python-dateutil==2.9.0.post0  # Dependency von dateparser
+pytz==2024.2
+tzlocal==5.3.1  # Dependency von dateparser
+regex>=2024.9.11  # Dependency von dateparser
+tzdata>=2024.2  # Dependency von tzlocal
+
+# Configuration & Utilities
+python-dotenv==1.2.1
+pydantic>=2.0,<2.12  # Gradio 5.49.1 benötigt pydantic<2.12
+pydantic-core==2.33.2
+pydantic-settings==2.6.1
+
+# Logging & Debugging
+colorlog==6.10.1
+
+# Testing (optional)
+pytest==8.4.2
+pytest-asyncio==1.2.0
+
+# HINWEISE:
+# - Alle Versionen sind auf Python 3.12.10 getestet
+# - Gradio-Version: Keine PyAudio-Installation nötig (Gradio nutzt eingebaute Audio-Unterstützung)
+# - Für Entwicklung: pip install -r requirements.txt
+# - Starten mit: python gradio_app.py
+# - Web-Interface verfügbar unter: http://localhost:7860

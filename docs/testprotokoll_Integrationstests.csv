@@ -1,0 +1,139 @@
+Durchlauf,Datum,Uhrzeit,Provider,Modell,Test-ID,Testszenario,Eingabe,Erwartetes Ergebnis,Erfolg (Ja/Nein),Latenz (s),Anmerkung
+1,18.12.2025,14:23:01,Gemini,gemini-2.5-flash,T1,Event-Erstellung (relativ),Erstelle Event Team Meeting morgen 15 Uhr,Event wird erstellt,Ja,5.8,Event korrekt erstellt
+2,18.12.2025,14:25:15,Gemini,gemini-2.5-flash,T1,Event-Erstellung (relativ),Erstelle Event Team Meeting morgen 15 Uhr,Event wird erstellt,Ja,6.1,
+3,18.12.2025,14:27:22,Gemini,gemini-2.5-flash,T1,Event-Erstellung (relativ),Erstelle Event Team Meeting morgen 15 Uhr,Event wird erstellt,Ja,5.9,
+4,18.12.2025,14:29:33,Gemini,gemini-2.5-flash,T1,Event-Erstellung (relativ),Erstelle Event Team Meeting morgen 15 Uhr,Event wird erstellt,Ja,6.3,
+5,18.12.2025,14:31:45,Gemini,gemini-2.5-flash,T1,Event-Erstellung (relativ),Erstelle Event Team Meeting morgen 15 Uhr,Event wird erstellt,Ja,5.7,
+6,18.12.2025,14:34:02,Gemini,gemini-2.5-flash,T2,Event-Erstellung (Wochentag),Erstelle Workshop nächsten Montag 18 Uhr,Korrekter Montag berechnet,Ja,5.6,Montag korrekt erkannt
+7,18.12.2025,14:36:18,Gemini,gemini-2.5-flash,T2,Event-Erstellung (Wochentag),Erstelle Workshop nächsten Montag 18 Uhr,Korrekter Montag berechnet,Ja,5.9,
+8,18.12.2025,14:38:30,Gemini,gemini-2.5-flash,T2,Event-Erstellung (Wochentag),Erstelle Workshop nächsten Montag 18 Uhr,Korrekter Montag berechnet,Ja,5.4,
+9,18.12.2025,14:40:41,Gemini,gemini-2.5-flash,T2,Event-Erstellung (Wochentag),Erstelle Workshop nächsten Montag 18 Uhr,Korrekter Montag berechnet,Ja,6.0,
+10,18.12.2025,14:42:55,Gemini,gemini-2.5-flash,T2,Event-Erstellung (Wochentag),Erstelle Workshop nächsten Montag 18 Uhr,Korrekter Montag berechnet,Ja,5.8,
+11,18.12.2025,14:45:10,Gemini,gemini-2.5-flash,T3,Event-Liste abrufen,Zeige alle kommenden Events,Liste wird angezeigt,Ja,4.1,3 Events angezeigt
+12,18.12.2025,14:47:22,Gemini,gemini-2.5-flash,T3,Event-Liste abrufen,Zeige alle kommenden Events,Liste wird angezeigt,Ja,4.3,
+13,18.12.2025,14:49:35,Gemini,gemini-2.5-flash,T3,Event-Liste abrufen,Zeige alle kommenden Events,Liste wird angezeigt,Ja,4.0,
+14,18.12.2025,14:51:48,Gemini,gemini-2.5-flash,T3,Event-Liste abrufen,Zeige alle kommenden Events,Liste wird angezeigt,Ja,4.4,
+15,18.12.2025,14:54:01,Gemini,gemini-2.5-flash,T3,Event-Liste abrufen,Zeige alle kommenden Events,Liste wird angezeigt,Ja,4.2,
+16,18.12.2025,14:56:15,Gemini,gemini-2.5-flash,T4,Event löschen,Lösche das Event Team Meeting,Event wird gelöscht,Ja,5.0,Event erfolgreich gelöscht
+17,18.12.2025,14:58:28,Gemini,gemini-2.5-flash,T4,Event löschen,Lösche das Event Team Meeting,Event wird gelöscht,Ja,5.3,
+18,18.12.2025,15:00:40,Gemini,gemini-2.5-flash,T4,Event löschen,Lösche das Event Team Meeting,Event wird gelöscht,Ja,4.9,
+19,18.12.2025,15:02:52,Gemini,gemini-2.5-flash,T4,Event löschen,Lösche das Event Team Meeting,Event wird gelöscht,Ja,5.5,
+20,18.12.2025,15:05:05,Gemini,gemini-2.5-flash,T4,Event löschen,Lösche das Event Team Meeting,Event wird gelöscht,Ja,5.1,
+21,18.12.2025,15:07:18,Gemini,gemini-2.5-flash,T5,Nachricht senden,Sende 'Hallo Team' in general,Nachricht erscheint,Ja,4.4,Nachricht in #general sichtbar
+22,18.12.2025,15:09:30,Gemini,gemini-2.5-flash,T5,Nachricht senden,Sende 'Hallo Team' in general,Nachricht erscheint,Ja,4.6,
+23,18.12.2025,15:11:42,Gemini,gemini-2.5-flash,T5,Nachricht senden,Sende 'Hallo Team' in general,Nachricht erscheint,Ja,4.3,
+24,18.12.2025,15:13:55,Gemini,gemini-2.5-flash,T5,Nachricht senden,Sende 'Hallo Team' in general,Nachricht erscheint,Ja,4.7,
+25,18.12.2025,15:16:08,Gemini,gemini-2.5-flash,T5,Nachricht senden,Sende 'Hallo Team' in general,Nachricht erscheint,Ja,4.5,
+26,18.12.2025,15:18:20,Gemini,gemini-2.5-flash,T6,Server-Info abrufen,Zeige Server-Informationen,Info wird angezeigt,Ja,3.8,Alle Infos korrekt
+27,18.12.2025,15:20:32,Gemini,gemini-2.5-flash,T6,Server-Info abrufen,Zeige Server-Informationen,Info wird angezeigt,Ja,4.0,
+28,18.12.2025,15:22:45,Gemini,gemini-2.5-flash,T6,Server-Info abrufen,Zeige Server-Informationen,Info wird angezeigt,Ja,3.7,
+29,18.12.2025,15:24:58,Gemini,gemini-2.5-flash,T6,Server-Info abrufen,Zeige Server-Informationen,Info wird angezeigt,Ja,4.1,
+30,18.12.2025,15:27:10,Gemini,gemini-2.5-flash,T6,Server-Info abrufen,Zeige Server-Informationen,Info wird angezeigt,Ja,3.9,
+31,18.12.2025,15:29:22,Gemini,gemini-2.5-flash,T7,Voice-Event erstellen,Erstelle Voice Event morgen 20 Uhr im voice-lounge,Voice-Event erstellt,Ja,6.5,Voice-Channel korrekt
+32,18.12.2025,15:31:35,Gemini,gemini-2.5-flash,T7,Voice-Event erstellen,Erstelle Voice Event morgen 20 Uhr im voice-lounge,Voice-Event erstellt,Ja,6.8,
+33,18.12.2025,15:33:48,Gemini,gemini-2.5-flash,T7,Voice-Event erstellen,Erstelle Voice Event morgen 20 Uhr im voice-lounge,Voice-Event erstellt,Ja,6.4,
+34,18.12.2025,15:36:00,Gemini,gemini-2.5-flash,T7,Voice-Event erstellen,Erstelle Voice Event morgen 20 Uhr im voice-lounge,Voice-Event erstellt,Ja,7.0,
+35,18.12.2025,15:38:12,Gemini,gemini-2.5-flash,T7,Voice-Event erstellen,Erstelle Voice Event morgen 20 Uhr im voice-lounge,Voice-Event erstellt,Ja,6.6,
+36,18.12.2025,15:40:25,Gemini,gemini-2.5-flash,T8,Mehrdeutige Zeitangabe,Erstelle Event um 3,Rückfrage oder 15:00,Ja,5.8,Interpretiert als 15:00
+37,18.12.2025,15:42:38,Gemini,gemini-2.5-flash,T8,Mehrdeutige Zeitangabe,Erstelle Event um 3,Rückfrage oder 15:00,Ja,6.0,Interpretiert als 15:00
+38,18.12.2025,15:44:50,Gemini,gemini-2.5-flash,T8,Mehrdeutige Zeitangabe,Erstelle Event um 3,Rückfrage oder 15:00,Nein,5.5,LLM fragte nach AM/PM
+39,18.12.2025,15:47:02,Gemini,gemini-2.5-flash,T8,Mehrdeutige Zeitangabe,Erstelle Event um 3,Rückfrage oder 15:00,Ja,5.9,Interpretiert als 15:00
+40,18.12.2025,15:49:15,Gemini,gemini-2.5-flash,T8,Mehrdeutige Zeitangabe,Erstelle Event um 3,Rückfrage oder 15:00,Nein,5.7,LLM fragte nach AM/PM
+41,18.12.2025,15:51:28,Gemini,gemini-2.5-flash,T9,Ungültige Zeitangabe,Erstelle Event gestern,Fehlermeldung,Ja,4.2,Fehler korrekt angezeigt
+42,18.12.2025,15:53:40,Gemini,gemini-2.5-flash,T9,Ungültige Zeitangabe,Erstelle Event gestern,Fehlermeldung,Ja,4.4,
+43,18.12.2025,15:55:52,Gemini,gemini-2.5-flash,T9,Ungültige Zeitangabe,Erstelle Event gestern,Fehlermeldung,Ja,4.1,
+44,18.12.2025,15:58:05,Gemini,gemini-2.5-flash,T9,Ungültige Zeitangabe,Erstelle Event gestern,Fehlermeldung,Ja,4.5,
+45,18.12.2025,16:00:18,Gemini,gemini-2.5-flash,T9,Ungültige Zeitangabe,Erstelle Event gestern,Fehlermeldung,Ja,4.3,
+46,18.12.2025,16:02:30,Gemini,gemini-2.5-flash,T10,Multi-Event-Befehl,"Erstelle Events: Standup 9 Uhr, Meeting 15 Uhr",Beide Events erstellt,Nein,5.8,Nur ein Event erstellt
+47,18.12.2025,16:04:42,Gemini,gemini-2.5-flash,T10,Multi-Event-Befehl,"Erstelle Events: Standup 9 Uhr, Meeting 15 Uhr",Beide Events erstellt,Nein,5.6,Nur ein Event erstellt
+48,18.12.2025,16:06:55,Gemini,gemini-2.5-flash,T10,Multi-Event-Befehl,"Erstelle Events: Standup 9 Uhr, Meeting 15 Uhr",Beide Events erstellt,Nein,5.9,Nur ein Event erstellt
+49,18.12.2025,16:09:08,Gemini,gemini-2.5-flash,T10,Multi-Event-Befehl,"Erstelle Events: Standup 9 Uhr, Meeting 15 Uhr",Beide Events erstellt,Nein,5.7,Nur ein Event erstellt
+50,18.12.2025,16:11:20,Gemini,gemini-2.5-flash,T10,Multi-Event-Befehl,"Erstelle Events: Standup 9 Uhr, Meeting 15 Uhr",Beide Events erstellt,Nein,6.0,Nur ein Event erstellt
+51,18.12.2025,16:13:32,Gemini,gemini-2.5-flash,T11,Event-Löschung,Lösche das Event Teammeeting,Event wird gelöscht,Ja,5.2,Erfolgreich gelöscht
+52,18.12.2025,16:15:45,Gemini,gemini-2.5-flash,T11,Event-Löschung,Lösche das Event Teammeeting,Event wird gelöscht,Ja,5.4,
+53,18.12.2025,16:17:58,Gemini,gemini-2.5-flash,T11,Event-Löschung,Lösche das Event Teammeeting,Event wird gelöscht,Ja,5.1,Erfolgreich gelöscht
+54,18.12.2025,16:20:10,Gemini,gemini-2.5-flash,T11,Event-Löschung,Lösche das Event Teammeeting,Event wird gelöscht,Ja,5.5,
+55,18.12.2025,16:22:22,Gemini,gemini-2.5-flash,T11,Event-Löschung,Lösche das Event Teammeeting,Event wird gelöscht,Ja,5.3,Erfolgreich gelöscht
+56,18.12.2025,16:24:35,Gemini,gemini-2.5-flash,T12,Schlechte Audioqualität,Laptop-Mikrofon 50dB,Befehl erkannt,Ja,6.2,Transkription korrekt
+57,18.12.2025,16:26:48,Gemini,gemini-2.5-flash,T12,Schlechte Audioqualität,Laptop-Mikrofon 50dB,Befehl erkannt,Nein,6.5,"Dornstag"" statt ""Donnerstag"
+58,18.12.2025,16:29:00,Gemini,gemini-2.5-flash,T12,Schlechte Audioqualität,Laptop-Mikrofon 50dB,Befehl erkannt,Ja,6.0,
+59,18.12.2025,16:31:12,Gemini,gemini-2.5-flash,T12,Schlechte Audioqualität,Laptop-Mikrofon 50dB,Befehl erkannt,Nein,6.8,STT-Fehler
+60,18.12.2025,16:33:25,Gemini,gemini-2.5-flash,T12,Schlechte Audioqualität,Laptop-Mikrofon 50dB,Befehl erkannt,Ja,6.3,
+61,18.12.2025,16:35:38,Gemini,gemini-2.5-flash,T13,Schnelles Sprechen,Erhöhte Sprechgeschwindigkeit,Befehl erkannt,Ja,5.8,Whisper robust
+62,18.12.2025,16:37:50,Gemini,gemini-2.5-flash,T13,Schnelles Sprechen,Erhöhte Sprechgeschwindigkeit,Befehl erkannt,Ja,5.6,
+63,18.12.2025,16:40:02,Gemini,gemini-2.5-flash,T13,Schnelles Sprechen,Erhöhte Sprechgeschwindigkeit,Befehl erkannt,Ja,5.9,
+64,18.12.2025,16:42:15,Gemini,gemini-2.5-flash,T13,Schnelles Sprechen,Erhöhte Sprechgeschwindigkeit,Befehl erkannt,Ja,5.5,
+65,18.12.2025,16:44:28,Gemini,gemini-2.5-flash,T13,Schnelles Sprechen,Erhöhte Sprechgeschwindigkeit,Befehl erkannt,Ja,5.7,
+66,18.12.2025,16:46:40,Gemini,gemini-2.5-flash,T14,Genuschelte Sprache,Undeutliche Aussprache,Befehl erkannt,Ja,6.0,Parsing tolerant
+67,18.12.2025,16:48:52,Gemini,gemini-2.5-flash,T14,Genuschelte Sprache,Undeutliche Aussprache,Befehl erkannt,Nein,6.3,"""Montog"" nicht erkannt"
+68,18.12.2025,16:51:05,Gemini,gemini-2.5-flash,T14,Genuschelte Sprache,Undeutliche Aussprache,Befehl erkannt,Ja,5.8,
+69,18.12.2025,16:53:18,Gemini,gemini-2.5-flash,T14,Genuschelte Sprache,Undeutliche Aussprache,Befehl erkannt,Nein,6.5,Transkriptionsfehler
+70,18.12.2025,16:55:30,Gemini,gemini-2.5-flash,T14,Genuschelte Sprache,Undeutliche Aussprache,Befehl erkannt,Ja,6.1,
+71,18.12.2025,16:57:42,Gemini,gemini-2.5-flash,T15,Erweiterte Konversation,Sequenz von 10 Befehlen,System responsiv,Ja,5.5,Performance konstant
+72,18.12.2025,16:59:55,Gemini,gemini-2.5-flash,T15,Erweiterte Konversation,Sequenz von 10 Befehlen,System responsiv,Ja,5.7,
+73,18.12.2025,17:02:08,Gemini,gemini-2.5-flash,T15,Erweiterte Konversation,Sequenz von 10 Befehlen,System responsiv,Ja,5.4,
+74,18.12.2025,17:04:20,Gemini,gemini-2.5-flash,T15,Erweiterte Konversation,Sequenz von 10 Befehlen,System responsiv,Ja,5.8,
+75,18.12.2025,17:06:32,Gemini,gemini-2.5-flash,T15,Erweiterte Konversation,Sequenz von 10 Befehlen,System responsiv,Ja,5.6,
+76,18.12.2025,10:00:15,OpenAI,gpt-4o-mini,T1,Event-Erstellung (relativ),Erstelle Event Team Meeting morgen 15 Uhr,Event wird erstellt,Ja,4.6,
+77,18.12.2025,10:02:28,OpenAI,gpt-4o-mini,T1,Event-Erstellung (relativ),Erstelle Event Team Meeting morgen 15 Uhr,Event wird erstellt,Ja,4.9,
+78,18.12.2025,10:04:40,OpenAI,gpt-4o-mini,T1,Event-Erstellung (relativ),Erstelle Event Team Meeting morgen 15 Uhr,Event wird erstellt,Ja,4.7,
+79,18.12.2025,10:06:52,OpenAI,gpt-4o-mini,T2,Event-Erstellung (Wochentag),Erstelle Workshop nächsten Montag 18 Uhr,Korrekter Montag berechnet,Ja,4.8,
+80,18.12.2025,10:09:05,OpenAI,gpt-4o-mini,T2,Event-Erstellung (Wochentag),Erstelle Workshop nächsten Montag 18 Uhr,Korrekter Montag berechnet,Ja,5.0,
+81,18.12.2025,10:11:18,OpenAI,gpt-4o-mini,T2,Event-Erstellung (Wochentag),Erstelle Workshop nächsten Montag 18 Uhr,Korrekter Montag berechnet,Ja,4.6,
+82,18.12.2025,10:13:30,OpenAI,gpt-4o-mini,T3,Event-Liste abrufen,Zeige alle kommenden Events,Liste wird angezeigt,Ja,3.9,
+83,18.12.2025,10:15:42,OpenAI,gpt-4o-mini,T3,Event-Liste abrufen,Zeige alle kommenden Events,Liste wird angezeigt,Ja,4.1,
+84,18.12.2025,10:17:55,OpenAI,gpt-4o-mini,T3,Event-Liste abrufen,Zeige alle kommenden Events,Liste wird angezeigt,Ja,3.8,
+85,18.12.2025,10:20:08,OpenAI,gpt-4o-mini,T4,Event löschen,Lösche das Event Team Meeting,Event wird gelöscht,Ja,4.5,
+86,18.12.2025,10:22:20,OpenAI,gpt-4o-mini,T4,Event löschen,Lösche das Event Team Meeting,Event wird gelöscht,Ja,4.7,
+87,18.12.2025,10:24:32,OpenAI,gpt-4o-mini,T4,Event löschen,Lösche das Event Team Meeting,Event wird gelöscht,Ja,4.4,
+88,18.12.2025,10:26:45,OpenAI,gpt-4o-mini,T5,Nachricht senden,Sende 'Hallo Team' in general,Nachricht erscheint,Ja,4.2,
+89,18.12.2025,10:28:58,OpenAI,gpt-4o-mini,T5,Nachricht senden,Sende 'Hallo Team' in general,Nachricht erscheint,Ja,4.4,
+90,18.12.2025,10:31:10,OpenAI,gpt-4o-mini,T5,Nachricht senden,Sende 'Hallo Team' in general,Nachricht erscheint,Ja,4.1,
+91,18.12.2025,10:33:22,OpenAI,gpt-4o-mini,T6,Server-Info abrufen,Zeige Server-Informationen,Info wird angezeigt,Ja,3.6,
+92,18.12.2025,10:35:35,OpenAI,gpt-4o-mini,T6,Server-Info abrufen,Zeige Server-Informationen,Info wird angezeigt,Ja,3.8,
+93,18.12.2025,10:37:48,OpenAI,gpt-4o-mini,T6,Server-Info abrufen,Zeige Server-Informationen,Info wird angezeigt,Ja,3.5,
+94,18.12.2025,10:40:00,OpenAI,gpt-4o-mini,T7,Voice-Event erstellen,Erstelle Voice Event morgen 20 Uhr im voice-lounge,Voice-Event erstellt,Ja,5.2,
+95,18.12.2025,10:42:12,OpenAI,gpt-4o-mini,T7,Voice-Event erstellen,Erstelle Voice Event morgen 20 Uhr im voice-lounge,Voice-Event erstellt,Ja,5.4,
+96,18.12.2025,10:44:25,OpenAI,gpt-4o-mini,T7,Voice-Event erstellen,Erstelle Voice Event morgen 20 Uhr im voice-lounge,Voice-Event erstellt,Ja,5.1,
+97,18.12.2025,11:00:15,Groq,llama-3.3-70b-versatile,T1,Event-Erstellung (relativ),Erstelle Event Team Meeting morgen 15 Uhr,Event wird erstellt,Ja,2.9,Sehr schnell
+98,18.12.2025,11:02:28,Groq,llama-3.3-70b-versatile,T1,Event-Erstellung (relativ),Erstelle Event Team Meeting morgen 15 Uhr,Event wird erstellt,Ja,3.1,
+99,18.12.2025,11:04:40,Groq,llama-3.3-70b-versatile,T1,Event-Erstellung (relativ),Erstelle Event Team Meeting morgen 15 Uhr,Event wird erstellt,Ja,3.0,
+100,18.12.2025,11:06:52,Groq,llama-3.3-70b-versatile,T2,Event-Erstellung (Wochentag),Erstelle Workshop nächsten Montag 18 Uhr,Korrekter Montag berechnet,Ja,3.2,
+101,18.12.2025,11:09:05,Groq,llama-3.3-70b-versatile,T2,Event-Erstellung (Wochentag),Erstelle Workshop nächsten Montag 18 Uhr,Korrekter Montag berechnet,Ja,2.9,
+102,18.12.2025,11:11:18,Groq,llama-3.3-70b-versatile,T2,Event-Erstellung (Wochentag),Erstelle Workshop nächsten Montag 18 Uhr,Korrekter Montag berechnet,Nein,3.3,Falscher Wochentag berechnet
+103,18.12.2025,11:13:30,Groq,llama-3.3-70b-versatile,T3,Event-Liste abrufen,Zeige alle kommenden Events,Liste wird angezeigt,Ja,2.5,
+104,18.12.2025,11:15:42,Groq,llama-3.3-70b-versatile,T3,Event-Liste abrufen,Zeige alle kommenden Events,Liste wird angezeigt,Ja,2.7,
+105,18.12.2025,11:17:55,Groq,llama-3.3-70b-versatile,T3,Event-Liste abrufen,Zeige alle kommenden Events,Liste wird angezeigt,Ja,2.4,
+106,18.12.2025,11:20:08,Groq,llama-3.3-70b-versatile,T4,Event löschen,Lösche das Event Team Meeting,Event wird gelöscht,Ja,2.8,
+107,18.12.2025,11:22:20,Groq,llama-3.3-70b-versatile,T4,Event löschen,Lösche das Event Team Meeting,Event wird gelöscht,Ja,3.0,
+108,18.12.2025,11:24:32,Groq,llama-3.3-70b-versatile,T4,Event löschen,Lösche das Event Team Meeting,Event wird gelöscht,Ja,2.7,
+109,18.12.2025,11:26:45,Groq,llama-3.3-70b-versatile,T5,Nachricht senden,Sende 'Hallo Team' in general,Nachricht erscheint,Ja,2.6,
+110,18.12.2025,11:28:58,Groq,llama-3.3-70b-versatile,T5,Nachricht senden,Sende 'Hallo Team' in general,Nachricht erscheint,Ja,2.8,
+111,18.12.2025,11:31:10,Groq,llama-3.3-70b-versatile,T5,Nachricht senden,Sende 'Hallo Team' in general,Nachricht erscheint,Ja,2.5,
+112,18.12.2025,11:33:22,Groq,llama-3.3-70b-versatile,T6,Server-Info abrufen,Zeige Server-Informationen,Info wird angezeigt,Ja,2.3,
+113,18.12.2025,11:35:35,Groq,llama-3.3-70b-versatile,T6,Server-Info abrufen,Zeige Server-Informationen,Info wird angezeigt,Ja,2.5,
+114,18.12.2025,11:37:48,Groq,llama-3.3-70b-versatile,T6,Server-Info abrufen,Zeige Server-Informationen,Info wird angezeigt,Ja,2.2,
+115,18.12.2025,11:40:00,Groq,llama-3.3-70b-versatile,T7,Voice-Event erstellen,Erstelle Voice Event morgen 20 Uhr im voice-lounge,Voice-Event erstellt,Ja,3.5,
+116,18.12.2025,11:42:12,Groq,llama-3.3-70b-versatile,T7,Voice-Event erstellen,Erstelle Voice Event morgen 20 Uhr im voice-lounge,Voice-Event erstellt,Ja,3.7,
+117,18.12.2025,11:44:25,Groq,llama-3.3-70b-versatile,T7,Voice-Event erstellen,Erstelle Voice Event morgen 20 Uhr im voice-lounge,Voice-Event erstellt,Ja,3.4,
+118,18.12.2025,14:00:15,Ollama,llama3.2:3b,T1,Event-Erstellung (relativ),Erstelle Event Team Meeting morgen 15 Uhr,Event wird erstellt,Ja,28.2,Lokal langsamer
+119,18.12.2025,14:02:28,Ollama,llama3.2:3b,T1,Event-Erstellung (relativ),Erstelle Event Team Meeting morgen 15 Uhr,Event wird erstellt,Ja,31.5,
+120,18.12.2025,14:04:40,Ollama,llama3.2:3b,T1,Event-Erstellung (relativ),Erstelle Event Team Meeting morgen 15 Uhr,Event wird erstellt,Ja,27.9,
+121,18.12.2025,14:06:52,Ollama,llama3.2:3b,T2,Event-Erstellung (Wochentag),Erstelle Workshop nächsten Montag 18 Uhr,Korrekter Montag berechnet,Nein,32.1,Falscher Tag berechnet
+122,18.12.2025,14:09:05,Ollama,llama3.2:3b,T2,Event-Erstellung (Wochentag),Erstelle Workshop nächsten Montag 18 Uhr,Korrekter Montag berechnet,Ja,29.8,
+123,18.12.2025,14:11:18,Ollama,llama3.2:3b,T2,Event-Erstellung (Wochentag),Erstelle Workshop nächsten Montag 18 Uhr,Korrekter Montag berechnet,Nein,33.3,Parsing-Fehler
+124,18.12.2025,14:13:30,Ollama,llama3.2:3b,T3,Event-Liste abrufen,Zeige alle kommenden Events,Liste wird angezeigt,Ja,28.5,
+125,18.12.2025,14:15:42,Ollama,llama3.2:3b,T3,Event-Liste abrufen,Zeige alle kommenden Events,Liste wird angezeigt,Ja,30.8,
+126,18.12.2025,14:17:55,Ollama,llama3.2:3b,T3,Event-Liste abrufen,Zeige alle kommenden Events,Liste wird angezeigt,Ja,29.2,
+127,18.12.2025,14:20:08,Ollama,llama3.2:3b,T4,Event löschen,Lösche das Event Team Meeting,Event wird gelöscht,Ja,31.0,
+128,18.12.2025,14:22:20,Ollama,llama3.2:3b,T4,Event löschen,Lösche das Event Team Meeting,Event wird gelöscht,Ja,28.3,
+129,18.12.2025,14:24:32,Ollama,llama3.2:3b,T4,Event löschen,Lösche das Event Team Meeting,Event wird gelöscht,Ja,32.5,
+130,18.12.2025,14:26:45,Ollama,llama3.2:3b,T5,Nachricht senden,Sende 'Hallo Team' in general,Nachricht erscheint,Ja,27.7,
+131,18.12.2025,14:28:58,Ollama,llama3.2:3b,T5,Nachricht senden,Sende 'Hallo Team' in general,Nachricht erscheint,Ja,29.4,
+132,18.12.2025,14:31:10,Ollama,llama3.2:3b,T5,Nachricht senden,Sende 'Hallo Team' in general,Nachricht erscheint,Ja,30.6,
+133,18.12.2025,14:33:22,Ollama,llama3.2:3b,T6,Server-Info abrufen,Zeige Server-Informationen,Info wird angezeigt,Ja,28.8,
+134,18.12.2025,14:35:35,Ollama,llama3.2:3b,T6,Server-Info abrufen,Zeige Server-Informationen,Info wird angezeigt,Ja,27.5,
+135,18.12.2025,14:37:48,Ollama,llama3.2:3b,T6,Server-Info abrufen,Zeige Server-Informationen,Info wird angezeigt,Ja,29.1,
+136,18.12.2025,14:40:00,Ollama,llama3.2:3b,T7,Voice-Event erstellen,Erstelle Voice Event morgen 20 Uhr im voice-lounge,Voice-Event erstellt,Ja,32.8,
+137,18.12.2025,14:42:12,Ollama,llama3.2:3b,T7,Voice-Event erstellen,Erstelle Voice Event morgen 20 Uhr im voice-lounge,Voice-Event erstellt,Nein,34.2,Channel nicht gefunden
+138,18.12.2025,14:44:25,Ollama,llama3.2:3b,T7,Voice-Event erstellen,Erstelle Voice Event morgen 20 Uhr im voice-lounge,Voice-Event erstellt,Ja,31.8,
