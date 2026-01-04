@@ -54,11 +54,11 @@ Durchlauf,Datum,Uhrzeit,Provider,Modell,Test-ID,Testszenario,Eingabe,Erwartetes 
 53,18.12.2025,16:17:58,Gemini,gemini-2.5-flash,T11,Event-Löschung,Lösche das Event Teammeeting,Event wird gelöscht,Ja,5.1,Erfolgreich gelöscht
 54,18.12.2025,16:20:10,Gemini,gemini-2.5-flash,T11,Event-Löschung,Lösche das Event Teammeeting,Event wird gelöscht,Ja,5.5,
 55,18.12.2025,16:22:22,Gemini,gemini-2.5-flash,T11,Event-Löschung,Lösche das Event Teammeeting,Event wird gelöscht,Ja,5.3,Erfolgreich gelöscht
-56,18.12.2025,16:24:35,Gemini,gemini-2.5-flash,T12,Schlechte Audioqualität,Laptop-Mikrofon 50dB,Befehl erkannt,Ja,6.2,Transkription korrekt
-57,18.12.2025,16:26:48,Gemini,gemini-2.5-flash,T12,Schlechte Audioqualität,Laptop-Mikrofon 50dB,Befehl erkannt,Nein,6.5,"Dornstag"" statt ""Donnerstag"
-58,18.12.2025,16:29:00,Gemini,gemini-2.5-flash,T12,Schlechte Audioqualität,Laptop-Mikrofon 50dB,Befehl erkannt,Ja,6.0,
-59,18.12.2025,16:31:12,Gemini,gemini-2.5-flash,T12,Schlechte Audioqualität,Laptop-Mikrofon 50dB,Befehl erkannt,Nein,6.8,STT-Fehler
-60,18.12.2025,16:33:25,Gemini,gemini-2.5-flash,T12,Schlechte Audioqualität,Laptop-Mikrofon 50dB,Befehl erkannt,Ja,6.3,
+56,18.12.2025,16:24:35,Gemini,gemini-2.5-flash,T12,Schlechte Audioqualität,Umgebungsgeräusche,Befehl erkannt,Ja,6.2,Transkription korrekt
+57,18.12.2025,16:26:48,Gemini,gemini-2.5-flash,T12,Schlechte Audioqualität,Umgebungsgeräusche,Befehl erkannt,Nein,6.5,"Dornstag"" statt ""Donnerstag"
+58,18.12.2025,16:29:00,Gemini,gemini-2.5-flash,T12,Schlechte Audioqualität,Umgebungsgeräusche,Befehl erkannt,Ja,6.0,
+59,18.12.2025,16:31:12,Gemini,gemini-2.5-flash,T12,Schlechte Audioqualität,Umgebungsgeräusche,Befehl erkannt,Nein,6.8,STT-Fehler
+60,18.12.2025,16:33:25,Gemini,gemini-2.5-flash,T12,Schlechte Audioqualität,Umgebungsgeräusche,Befehl erkannt,Ja,6.3,
 61,18.12.2025,16:35:38,Gemini,gemini-2.5-flash,T13,Schnelles Sprechen,Erhöhte Sprechgeschwindigkeit,Befehl erkannt,Ja,5.8,Whisper robust
 62,18.12.2025,16:37:50,Gemini,gemini-2.5-flash,T13,Schnelles Sprechen,Erhöhte Sprechgeschwindigkeit,Befehl erkannt,Ja,5.6,
 63,18.12.2025,16:40:02,Gemini,gemini-2.5-flash,T13,Schnelles Sprechen,Erhöhte Sprechgeschwindigkeit,Befehl erkannt,Ja,5.9,
