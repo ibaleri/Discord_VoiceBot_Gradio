@@ -91,7 +91,7 @@ MCP_SERVER_PORT=8000
 MCP_TRANSPORT=sse
 ```
 
-API keys are managed in `api_keys.json` (created on first startup).
+API keys are managed in `api_keys.json` (see below).
 
 **Client** (`.env` on the user's machine):
 ```env
@@ -104,6 +104,39 @@ LLM_MODEL=llama3.2
 SPEECH_PROVIDER=groq-fallback
 GROQ_API_KEY=your_groq_key
 ```
+
+### API Keys (`api_keys.json`)
+
+The file `api_keys.json` is **not included in the repository** because it contains authentication tokens. It is listed in `.gitignore`. You need to create it manually in the project root (next to `.env`):
+
+```json
+{
+  "keys": {
+    "sk-admin-xyz789": {
+      "name": "Admin",
+      "role": "admin",
+      "active": true
+    },
+    "sk-user-alice-abc123": {
+      "name": "Alice",
+      "role": "writer",
+      "active": true
+    },
+    "sk-user-bob-def456": {
+      "name": "Bob",
+      "role": "reader",
+      "active": true
+    }
+  }
+}
+```
+
+Each key maps to a user with a role:
+- **reader**: Can only query data (list events, channels, messages)
+- **writer**: Can also create/delete events and send messages
+- **admin**: Full access including rate limit bypass
+
+The `name` field is used for user attribution (e.g. "Gesendet von: Alice" in Discord message footers). The key value (e.g. `sk-admin-xyz789`) is what clients put in their `MCP_API_KEY` env variable.
 
 ## Usage
 
