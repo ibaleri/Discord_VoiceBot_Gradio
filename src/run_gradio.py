@@ -23,7 +23,7 @@ def kill_process_on_port(port: int) -> bool:
         True wenn ein Prozess beendet wurde, False sonst
     """
     if sys.platform != "win32":
-        #Linux/Mac: Andere Methode
+        # Linux/Mac: Andere Methode
         try:
             result = subprocess.run(
                 f"lsof -ti:{port} | xargs kill -9",
@@ -35,7 +35,7 @@ def kill_process_on_port(port: int) -> bool:
             return False
 
     try:
-        #Windows: netstat nutzen um PID zu finden
+        # Windows: netstat nutzen um PID zu finden
         result = subprocess.run(
             ["netstat", "-ano"],
             capture_output=True,
@@ -45,13 +45,13 @@ def kill_process_on_port(port: int) -> bool:
 
         pids_to_kill = set()
         for line in result.stdout.splitlines():
-            #Suche nach "ABHÖREN" (listening) auf unserem Port
+            # Suche nach "ABHÖREN" (listening) auf unserem Port
             if f":{port}" in line and ("ABHÖREN" in line or "LISTENING" in line):
                 parts = line.split()
                 if parts:
                     try:
                         pid = int(parts[-1])
-                        #Eigenen Prozess nicht killen
+                        # Eigenen Prozess nicht killen
                         if pid != os.getpid():
                             pids_to_kill.add(pid)
                     except ValueError:
@@ -60,7 +60,7 @@ def kill_process_on_port(port: int) -> bool:
         if not pids_to_kill:
             return False
 
-        #Prozesse beenden
+        # Prozesse beenden
         killed = False
         for pid in pids_to_kill:
             try:
@@ -88,11 +88,11 @@ if __name__ == "__main__":
         print("=" * 60)
         print()
 
-        #Alte Instanzen beenden falls Port belegt
+        # Alte Instanzen beenden falls Port belegt
         print("Prüfe Port 7860...")
         if kill_process_on_port(GRADIO_PORT):
             print("  Alte Instanz(en) beendet.")
-            #Kurz warten bis Port freigegeben ist
+            # Kurz warten bis Port freigegeben ist
             import time
             time.sleep(0.5)
         else:
@@ -106,19 +106,19 @@ if __name__ == "__main__":
         print("=" * 60)
         print()
 
-        #Importiere und starte gradio_app
+        # Importiere und starte gradio_app
         from gradio_app import create_interface
 
-        #Interface erstellen
+        # Interface erstellen
         demo = create_interface()
 
-        #Starten
+        # Starten
         demo.launch(
             server_name="0.0.0.0",
             server_port=GRADIO_PORT,
-            share=False,  #Setze auf True für öffentlichen Link
+            share=False,  # Setze auf True für öffentlichen Link
             show_error=True,
-            inbrowser=True  #Öffne Browser automatisch
+            inbrowser=True  # Öffne Browser automatisch
         )
 
     except KeyboardInterrupt:

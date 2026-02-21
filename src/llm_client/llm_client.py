@@ -1,7 +1,11 @@
 """LLM Client Module für universelle LLM-API Zugriffe."""
 
+import json
+import logging
 import os
 from typing import Any, Literal
+
+logger = logging.getLogger(__name__)
 
 from dotenv import load_dotenv
 
@@ -269,6 +273,101 @@ class LLMClient:
                 keep_alive=self.keep_alive,
             )
             return response["message"]["content"]
+
+        else:
+            raise ValueError(f"Unsupported API choice: {self.api_choice}")
+
+    def chat_completion_with_tools(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        tool_choice: str = "auto",
+    ) -> dict[str, Any]:
+        """Chat-Completion mit nativen Tool-Calls (alle Provider).
+        Gibt normalisiertes dict mit role, content und tool_calls zurueck."""
+        if self.api_choice in ("openai", "groq", "gemini"):
+            if not self.client:
+                raise RuntimeError(f"{self.api_choice} client not available.")
+
+            kwargs: dict[str, Any] = {
+                "model": self.llm,
+                "messages": messages,
+                "tools": tools,
+                "tool_choice": tool_choice,
+            }
+
+            is_new_model = self.api_choice == "openai" and self.llm.startswith(
+                ("gpt-5", "o1", "o3")
+            )
+            if is_new_model:
+                kwargs["max_completion_tokens"] = self.max_tokens
+            else:
+                kwargs["temperature"] = self.temperature
+                kwargs["max_tokens"] = self.max_tokens
+
+            response = self.client.chat.completions.create(**kwargs)
+            message = response.choices[0].message
+
+            tool_calls_data = None
+            if message.tool_calls:
+                tool_calls_data = [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments,
+                        },
+                    }
+                    for tc in message.tool_calls
+                ]
+
+            return {
+                "role": "assistant",
+                "content": message.content,
+                "tool_calls": tool_calls_data,
+            }
+
+        elif self.api_choice == "ollama":
+            if not ollama:
+                raise RuntimeError("Ollama Python package not available.")
+
+            response = ollama.chat(
+                model=self.llm,
+                messages=messages,
+                tools=tools,
+                stream=False,
+                options={
+                    "temperature": self.temperature,
+                    "num_predict": self.max_tokens,
+                },
+                keep_alive=self.keep_alive,
+            )
+            message = response["message"]
+
+            tool_calls_data = None
+            if message.get("tool_calls"):
+                tool_calls_data = [
+                    {
+                        "id": f"call_{i}",
+                        "type": "function",
+                        "function": {
+                            "name": tc["function"]["name"],
+                            "arguments": json.dumps(
+                                tc["function"]["arguments"], ensure_ascii=False
+                            )
+                            if isinstance(tc["function"]["arguments"], dict)
+                            else tc["function"]["arguments"],
+                        },
+                    }
+                    for i, tc in enumerate(message["tool_calls"])
+                ]
+
+            return {
+                "role": "assistant",
+                "content": message.get("content"),
+                "tool_calls": tool_calls_data,
+            }
 
         else:
             raise ValueError(f"Unsupported API choice: {self.api_choice}")

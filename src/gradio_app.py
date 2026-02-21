@@ -16,13 +16,14 @@ from threading import Thread
 import pytz
 import dateparser
 
-#Projekt-Imports
+# Projekt-Imports
 from config import Config
 from mcp_client import DiscordMCPClient
 from llm_voice import LLMVoiceInterface
 from discord_helpers import DiscordEventHelper
+from tool_schemas import get_tool_definitions
 
-#Logging konfigurieren
+# Logging konfigurieren
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -33,7 +34,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-#Import _safe_log von llm_voice (keine Duplikation)
+# Import _safe_log von llm_voice (keine Duplikation)
 from llm_voice import _safe_log
 
 
@@ -47,7 +48,7 @@ class DiscordBotGradio:
         self.helper = None
         self.is_initialized = False
 
-        #Event Loop für asynchrone Operationen
+        # Event Loop für asynchrone Operationen
         self.loop = None
         self.loop_thread = None
         self._start_event_loop()
@@ -64,35 +65,42 @@ class DiscordBotGradio:
         self.loop_thread.start()
         logger.info("Event Loop gestartet")
 
-    def _run_async(self, coro):
-        """Führt eine Coroutine im persistenten Event Loop aus"""
+    def _run_async(self, coro, timeout=120):
         future = asyncio.run_coroutine_threadsafe(coro, self.loop)
-        return future.result()
+        try:
+            return future.result(timeout=timeout)
+        except TimeoutError:
+            return "[FEHLER] Zeitueberschreitung --- bitte erneut versuchen"
 
     async def initialize(self):
         """Bot initialisieren"""
         try:
             logger.info("Initialisiere Discord Bot...")
 
-            #Konfiguration laden
+            # Konfiguration laden
             self.config = Config()
             logger.info("Konfiguration geladen")
 
-            #MCP Client initialisieren
+            # MCP Client initialisieren
             self.mcp_client = DiscordMCPClient(self.config)
             await self.mcp_client.connect()
             logger.info("MCP Client verbunden")
 
-            #LLM Voice Interface initialisieren
+            # LLM Voice Interface initialisieren
             self.gemini = LLMVoiceInterface(self.config)
             logger.info("LLM Voice Interface initialisiert")
 
-            #Discord Helper initialisieren
-            self.helper = DiscordEventHelper(self.config, self.mcp_client, self.gemini)
-            await self.helper.initialize()
-            logger.info("Discord Helper initialisiert")
+            # Discord Helper initialisieren
+            # Remote: kein Helper noetig, MCP Server uebernimmt
+            if self.config.mcp_mode == "remote":
+                self.helper = None
+                logger.info("Remote-Mode: Helper uebersprungen (MCP Server uebernimmt)")
+            else:
+                self.helper = DiscordEventHelper(self.config, self.mcp_client, self.gemini)
+                await self.helper.initialize()
+                logger.info("Discord Helper initialisiert")
 
-            #Audio Recorder nicht benötigt ------ Gradio nutzt Browser-Audio direkt
+            # Audio Recorder nicht benötigt - Gradio nutzt Browser-Audio direkt
             logger.info("Audio-Unterstützung: Gradio Browser-Interface")
 
             self.is_initialized = True
@@ -112,7 +120,7 @@ class DiscordBotGradio:
         timezone = pytz.timezone('Europe/Berlin')
         now = datetime.now(timezone)
 
-        #Verschiedene Patterns für "vom X bis Y"
+        # Verschiedene Patterns für "vom X bis Y"
         patterns = [
             r'vom\s+([\d\.]+\s+\w+(?:\s+\d{4})?)\s+bis\s+zum\s+([\d\.]+\s+\w+(?:\s+\d{4})?)',
             r'vom\s+([\d\.]+\s+\w+(?:\s+\d{4})?)\s+bis\s+([\d\.]+\s+\w+(?:\s+\d{4})?)',
@@ -129,7 +137,7 @@ class DiscordBotGradio:
                 logger.info(f"Parser: Pattern matched! Start='{start_str}', End='{end_str}'")
 
                 try:
-                    #Parse beide Daten OHNE 'future' preference - wir korrigieren manuell
+                    # Parse beide Daten OHNE 'future' preference - wir korrigieren manuell
                     start_date = dateparser.parse(
                         start_str,
                         settings={
@@ -153,24 +161,27 @@ class DiscordBotGradio:
                     )
 
                     if start_date and end_date:
-                        #Wenn End-Datum vor Start-Datum liegt,
-                        #bedeutet das, dass End ins nächste Jahr gehört
+                        # Korrektur: Wenn End-Datum vor Start-Datum liegt,
+                        # bedeutet das, dass End ins nächste Jahr gehört
                         if end_date < start_date:
                             end_date = end_date.replace(year=end_date.year + 1)
                             logger.info(f"Parser: End-Datum korrigiert auf {end_date.year}")
 
-                        #Wenn Start-Datum in der Vergangenheit liegt
-                        #und kein explizites Jahr angegeben wurde, aktuelles Jahr verwenden
+                        # Korrektur: Wenn Start-Datum in der Vergangenheit liegt
+                        # und kein explizites Jahr angegeben wurde, aktuelles Jahr verwenden
+                        # (User meint wahrscheinlich dieses Jahr wenn es noch möglich ist)
                         if start_date.date() < now.date():
-                            #(z.B. "1. November" am 28. November -> November 2025, nicht 2026)
+                            # Prüfe ob es noch dieses Jahr Sinn macht
+                            # (z.B. "1. November" am 28. November -> November 2025, nicht 2026)
                             if start_date.month >= now.month or (start_date.month == now.month and start_date.day >= now.day):
-                                #Monat ist aktuell oder zukünftig dieses Jahr
+                                # Monat ist aktuell oder zukünftig dieses Jahr
                                 pass
                             else:
-                                #Monat ist vorbei, aber wir behalten das Jahr
+                                # Monat ist vorbei, aber wir behalten das Jahr
+                                # weil User explizit einen Zeitraum abfragt
                                 pass
 
-                        #Format: YYYY-MM-DD für bessere Kompatibilität
+                        # Format: YYYY-MM-DD für bessere Kompatibilität
                         start_formatted = start_date.strftime('%Y-%m-%d')
                         end_formatted = end_date.strftime('%Y-%m-%d')
 
@@ -188,7 +199,7 @@ class DiscordBotGradio:
                 except Exception as e:
                     logger.warning(f"Parser Fehler: {e}", exc_info=True)
 
-        #Pattern für "im November" etc.
+        # Pattern für "im November" etc.
         pattern_month = r'im\s+(januar|februar|märz|april|mai|juni|juli|august|september|oktober|november|dezember)'
         match_month = re.search(pattern_month, user_input, re.IGNORECASE)
 
@@ -197,7 +208,7 @@ class DiscordBotGradio:
             logger.info(f"Parser: Monat-Pattern matched! Monat='{month_name}'")
 
             try:
-                #Parse Start des Monats im aktuellen Jahr
+                # Parse Start des Monats im aktuellen Jahr
                 month_start = dateparser.parse(
                     f"1. {month_name} {now.year}",
                     settings={
@@ -208,17 +219,17 @@ class DiscordBotGradio:
                 )
 
                 if month_start:
-                    #Timezone-Aware sicherstellen
+                    # Timezone-Aware sicherstellen
                     if month_start.tzinfo is None:
                         month_start = timezone.localize(month_start)
 
-                    #Ende des Monats berechnen
+                    # Ende des Monats berechnen
                     next_month = month_start.replace(day=28) + timedelta(days=4)
                     month_end = next_month - timedelta(days=next_month.day)
 
-                    #Prüfe ob Monat schon vorbei ist
+                    # Prüfe ob Monat schon vorbei ist
                     if month_end.date() < now.date():
-                        #Monat liegt in Vergangenheit -> Nutze nächstes Jahr
+                        # Monat liegt in Vergangenheit -> Nutze nächstes Jahr
                         logger.info(f"Parser: Monat '{month_name}' liegt in Vergangenheit, nutze {now.year + 1}")
                         month_start = month_start.replace(year=now.year + 1)
                         next_month = month_start.replace(day=28) + timedelta(days=4)
@@ -226,11 +237,11 @@ class DiscordBotGradio:
                         days = (month_end.date() - now.date()).days
                         logger.info(f"Parser: Zukünftiger Monat '{month_name} {now.year + 1}' - {days} Tage von heute")
                     elif month_start.month == now.month and month_start.year == now.year:
-                        #Wir sind im Monat -> Nutze Rest des Monats (von heute bis Ende)
+                        # Wir sind im Monat -> Nutze Rest des Monats (von heute bis Ende)
                         days = (month_end.date() - now.date()).days
                         logger.info(f"Parser: Im aktuellen Monat '{month_name}' - Rest des Monats = {days} Tage")
                     else:
-                        #Monat liegt in der Zukunft (aber dieses Jahr) -> Nutze ganzen Monat
+                        # Monat liegt in der Zukunft (aber dieses Jahr) -> Nutze ganzen Monat
                         days = (month_end.date() - now.date()).days
                         logger.info(f"Parser: Zukünftiger Monat '{month_name} {now.year}' - {days} Tage von heute")
 
@@ -244,303 +255,219 @@ class DiscordBotGradio:
             except Exception as e:
                 logger.warning(f"Parser Monat Fehler: {e}", exc_info=True)
 
-        #Kein Match--- Original zurückgeben
+        # Kein Match: Original zurückgeben
         return user_input
 
     async def _execute_command(self, text: str) -> str:
-        """Führt Befehl aus"""
+        """Befehl ausfuehren - natives LLM Tool Calling mit Multi-Turn Loop."""
         try:
-            #Smart-Preprocessing: "vom X bis Y" → "in den nächsten X Tagen"
+            # Preprocessing: "vom X bis Y" -> "in den naechsten X Tagen"
             preprocessed_text = self._preprocess_user_input(text)
 
-            #Context für Gemini erstellen
-            context = self._build_context()
+            # System-Prompt + Tools
+            system_prompt = self._build_system_prompt()
+            tools = get_tool_definitions()
 
-            response = await self.gemini.process_with_context(preprocessed_text, context)
+            # Messages bauen
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": preprocessed_text}
+            ]
 
-            if not response:
-                return "[FEHLER] Keine Antwort LLM"
+            # Tool-Call-Loop (max 5 Runden, damit nicht endlos laeuft)
+            max_rounds = 5
+            for round_num in range(max_rounds):
+                logger.info(f"[Tool-Call] Runde {round_num + 1}/{max_rounds}")
 
-            logger.info(f"LLM Antwort: {_safe_log(response, 200)}")
+                # LLM aufrufen
+                response = self.gemini.llm_client.chat_completion_with_tools(
+                    messages=messages,
+                    tools=tools,
+                    tool_choice="auto"
+                )
 
-            #Antwort parsen
-            #Prüfe ob response ein String ist
-            if isinstance(response, str):
-                #1. Versuche JSON-Block zu finden
-                json_match = re.search(r'```json\s*(\{.*?\})\s*```', response, re.DOTALL)
-                if json_match:
-                    parsed = json.loads(json_match.group(1))
-                else:
-                    #2. Versuche direktes JSON
+                if not response:
+                    return "[FEHLER] Keine Antwort vom LLM"
+
+                logger.info(f"[Tool-Call] Response: content={_safe_log(response.get('content', ''), 100)}, "
+                           f"tool_calls={len(response.get('tool_calls') or [])}")
+
+                tool_calls = response.get("tool_calls")
+
+                # Kein Tool-Call -> fertig, Text zurueck
+                if not tool_calls:
+                    content = response.get("content", "")
+                    return content if content else "Befehl ausgefuehrt."
+
+                # Assistant-Msg mit tool_calls anhaengen
+                assistant_msg = {"role": "assistant", "content": response.get("content")}
+                assistant_msg["tool_calls"] = tool_calls
+                messages.append(assistant_msg)
+
+                # Jeden Tool-Call einzeln ausfuehren
+                for tc in tool_calls:
+                    func_name = tc["function"]["name"]
                     try:
-                        parsed = json.loads(response)
-                    except:
-                        #Fallback: Response als Text zurückgeben
-                        return response
-            else:
-                parsed = response
+                        args = json.loads(tc["function"]["arguments"]) if isinstance(tc["function"]["arguments"], str) else tc["function"]["arguments"]
+                    except json.JSONDecodeError:
+                        args = {}
 
-            #Nachricht extrahieren
-            message = parsed.get('message', '')
-            actions = parsed.get('actions', [])
+                    logger.info(f"[Tool-Call] Ausfuehren: {func_name}({args})")
 
-            #Wenn kein actions-Array, aber direkt eine function angegeben
-            if not actions and 'function' in parsed:
-                actions = [{
-                    "type": "helper_function",
-                    "function": parsed.get('function'),
-                    "params": parsed.get('params', {})
-                }]
-                logger.info(f"[Parser] Einzelne Action erkannt: {parsed.get('function')}")
-
-            #Aktionen ausführen
-            results = []
-            for action in actions:
-                result = await self._execute_action(action)
-                results.append(result)
-
-            #Ergebnis formatieren
-            if results:
-                formatted_results = []
-                for r in results:
-                    if not r.get('success'):
-                        continue
-
-                    #Spezielle Formatierung für Events
-                    #Events können direkt in r['events'] oder in r['result']['events'] sein
-                    events_data = None
-                    if 'result' in r and isinstance(r['result'], dict) and 'events' in r['result']:
-                        events_data = r['result']
-                    elif 'events' in r:
-                        events_data = r
-
-                    if events_data and 'events' in events_data:
-                        events = events_data.get('events', [])
-                        if events:
-                            formatted_results.append(f"\n**{len(events)} Events gefunden:**\n")
-                            for event in events:
-                                name = event.get('name', 'Unbekannt')
-                                start = event.get('start_time', 'Keine Zeit')
-                                desc = event.get('description', '')
-                                location = event.get('location', '')
-
-                                #Datum formatieren (nur Datum und Uhrzeit, kein ISO)
-                                try:
-                                    dt = datetime.fromisoformat(start.replace('Z', '+00:00'))
-                                    start_formatted = dt.strftime('%d.%m.%Y %H:%M')
-                                except:
-                                    start_formatted = start
-
-                                event_text = f"📅 **{name}**\n   🕐 {start_formatted}"
-                                if desc:
-                                    event_text += f"\n   📝 {desc[:100]}..."
-                                if location:
-                                    event_text += f"\n   📍 {location}"
-                                formatted_results.append(event_text)
+                    # Remote oder Lokal ausfuehren
+                    try:
+                        if self.config.mcp_mode == "remote":
+                            # Remote: direkt an MCP Server schicken
+                            mcp_result = await self.mcp_client.client.call_tool(
+                                func_name, arguments=args
+                            )
+                            result = self._parse_mcp_result(mcp_result)
+                        elif self.helper and hasattr(self.helper, func_name):
+                            func = getattr(self.helper, func_name)
+                            result = await func(**args)
                         else:
-                            #Keine Events gefunden
-                            formatted_results.append("\n❌ **Keine Events gefunden**")
+                            result = {"error": f"Funktion nicht gefunden: {func_name}"}
 
-                    #Spezielle Formatierung für Channels
-                    channels_data = None
-                    if 'result' in r and isinstance(r['result'], dict) and 'channels' in r['result']:
-                        channels_data = r['result']
-                    elif 'channels' in r:
-                        channels_data = r
+                        # Ergebnis formatieren damit LLM es besser lesen kann
+                        formatted = self._format_tool_result(result)
+                        result_str = formatted
 
-                    if channels_data and 'channels' in channels_data:
-                        channels = channels_data.get('channels', [])
-                        if channels:
-                            formatted_results.append(f"\n**{len(channels)} Channels gefunden:**\n")
-                            for channel in channels:
-                                name = channel.get('name', 'Unbekannt')
-                                ch_type = channel.get('type', -1)
+                    except Exception as e:
+                        logger.error(f"[Tool-Call] Fehler bei {func_name}: {e}", exc_info=True)
+                        result_str = json.dumps({"error": str(e)}, ensure_ascii=False)
 
-                                #Type zu lesbarem Text
-                                type_text = {
-                                    0: "💬 Text",
-                                    2: "🔊 Voice",
-                                    4: "📁 Kategorie",
-                                    5: "📢 Ankündigungen",
-                                    13: "🎭 Stage",
-                                    15: "🧵 Forum"
-                                }.get(ch_type, f"❓ Type {ch_type}")
+                    # Tool-Result anhaengen
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc["id"],
+                        "content": result_str
+                    })
 
-                                channel_text = f"{type_text} **{name}**"
-                                formatted_results.append(channel_text)
-                        continue
-
-                    #Spezielle Formatierung für Channel-Zusammenfassung
-                    summary_data = None
-                    if 'result' in r and isinstance(r['result'], dict) and 'summary' in r['result']:
-                        summary_data = r['result']
-                    elif 'summary' in r:
-                        summary_data = r
-
-                    if summary_data and 'summary' in summary_data:
-                        channel_name = summary_data.get('channel', 'Unbekannt')
-                        summary = summary_data.get('summary', '')
-                        message_count = summary_data.get('message_count', 0)
-                        if summary:
-                            formatted_results.append(f"\n📋 **Zusammenfassung #{channel_name}** ({message_count} Nachrichten):\n")
-                            formatted_results.append(summary)
-                        continue
-
-                    #Spezielle Formatierung für Channel-Nachrichten
-                    messages_data = None
-                    if 'result' in r and isinstance(r['result'], dict) and 'messages' in r['result']:
-                        messages_data = r['result']
-                    elif 'messages' in r:
-                        messages_data = r
-
-                    if messages_data and 'messages' in messages_data:
-                        messages = messages_data.get('messages', [])
-                        channel_name = messages_data.get('channel', 'Unbekannt')
-                        if messages:
-                            formatted_results.append(f"\n**{len(messages)} Nachrichten aus #{channel_name}:**\n")
-                            #älteste zuerst, neueste zuletzt
-                            for msg in reversed(messages):
-                                author = msg.get('author', 'Unbekannt')
-                                content = msg.get('content', '(kein Text)')
-                                timestamp = msg.get('timestamp', '')
-                                extra_info = msg.get('extra_info', '')
-
-                                msg_text = f"👤 **{author}** ({timestamp}){extra_info}\n   {content}"
-                                formatted_results.append(msg_text)
-                        else:
-                            formatted_results.append(f"\n❌ **Keine Nachrichten in #{channel_name} gefunden**")
-                        continue
-
-                    #Spezielle Formatierung für Online-Members
-                    members_data = None
-                    if 'result' in r and isinstance(r['result'], dict) and 'online_count' in r['result']:
-                        members_data = r['result']
-                    elif 'online_count' in r:
-                        members_data = r
-
-                    if members_data and 'online_count' in members_data:
-                        online_count = members_data.get('online_count', 0)
-                        total = members_data.get('total_members', 0)
-                        msg = members_data.get('message', '')
-                        members_list = members_data.get('members', [])
-
-                        if msg:
-                            formatted_results.append(f"\n👥 {msg}")
-
-                        if members_list:
-                            formatted_results.append(f"\n**Server-Mitglieder:**")
-                            for m in members_list:
-                                display = m.get('display_name', m.get('username', 'Unbekannt'))
-                                formatted_results.append(f"  • {display}")
-                        continue
-
-                    #Normale Nachricht
-                    result_msg = None
-                    if 'result' in r and isinstance(r['result'], dict) and 'message' in r['result']:
-                        result_msg = r['result'].get('message')
-                    elif 'message' in r:
-                        result_msg = r.get('message')
-
-                    if result_msg:
-                        formatted_results.append(f"✅ {result_msg}")
-
-                if formatted_results:
-                    result_text = "\n".join(formatted_results)
-                    #Wenn message leer ist, nur results zurückgeben
-                    if message:
-                        return f"{message}\n{result_text}"
-                    else:
-                        return result_text
-
-            #Nur message zurückgeben, wenn sie nicht leer ist
-            return message if message else "Befehl ausgeführt."
+            # Max Runden erreicht
+            return "[WARN] Maximale Anzahl an Tool-Aufrufen erreicht."
 
         except Exception as e:
-            logger.error(f"Fehler bei Befehl-Ausführung: {e}", exc_info=True)
+            logger.error(f"Fehler bei Befehl-Ausfuehrung: {e}", exc_info=True)
             return f"[FEHLER] Fehler: {str(e)}"
 
-    async def _execute_action(self, action: dict) -> dict:
-        """Führt eine Action aus"""
-        try:
-            function_name = action.get('function')
-            params = action.get('params', {})
-
-            if hasattr(self.helper, function_name):
-                func = getattr(self.helper, function_name)
-                result = await func(**params)
-
-                logger.info(f"[OK] Action erfolgreich: {function_name}")
-                return {
-                    "success": True,
-                    "function": function_name,
-                    "result": result,
-                    "message": result.get('message', 'Erfolgreich ausgeführt')
-                }
-            else:
-                logger.warning(f"[WARN] Unbekannte Funktion: {function_name}")
-                return {
-                    "success": False,
-                    "error": f"Funktion nicht gefunden: {function_name}"
-                }
-
-        except Exception as e:
-            logger.error(f"[FEHLER] Fehler bei Action: {e}", exc_info=True)
-            return {
-                "success": False,
-                "error": str(e)
-            }
-
-    def _build_context(self):
-        """Erstellt Context für LLM"""
-        if not self.helper:
-            return ""
-
-        functions = self.helper.get_available_functions()
-
-        #Aktuelles Datum für korrekte Datumsberechnungen
+    def _build_system_prompt(self):
+        """System-Prompt bauen (Tool-Defs kommen seperat ueber tools-Parameter)."""
         now = datetime.now()
         tomorrow = now + timedelta(days=1)
 
-        context = f"AKTUELLES DATUM: {now.strftime('%d. %B %Y')} ({now.strftime('%A')})\n"
-        context += f"'Heute' = {now.strftime('%Y-%m-%d')}\n"
-        context += f"'Morgen' = {tomorrow.strftime('%Y-%m-%d')}\n\n"
-        context += "WICHTIG: Antworte NUR mit JSON! Kein Text davor oder danach!\n"
-        context += "Deine Antwort MUSS mit '{' beginnen und mit '}' enden.\n\n"
-        context += "Verfügbare Discord-Funktionen:\n\n"
+        return (
+            "Du bist ein Discord Bot-Assistent. Antworte auf Deutsch.\n"
+            f"AKTUELLES DATUM: {now.strftime('%d. %B %Y')} ({now.strftime('%A')})\n"
+            f"'Heute' = {now.strftime('%Y-%m-%d')}, 'Morgen' = {tomorrow.strftime('%Y-%m-%d')}\n\n"
+            "Nutze die verfuegbaren Tools um Discord-Aktionen auszufuehren.\n"
+            "channel_id kann ein Channel-NAME sein (z.B. 'allgemein').\n"
+            "Setze KEIN niedriges limit bei Events - Standard ist 50.\n"
+            "Bei Zeitraeumen ('von X bis Y') nutze from_date und to_date.\n"
+            "Bei 'naechste X Tage' nutze days_ahead.\n"
+            "Antworte dem User freundlich und fasse Ergebnisse zusammen."
+        )
 
-        for func_name, func_info in functions.items():
-            context += f"**{func_name}**\n"
-            context += f"  {func_info['description']}\n"
-            context += f"  Parameter: {', '.join(func_info['params'])}\n\n"
+    def _parse_mcp_result(self, mcp_result) -> dict:
+        """MCP Result -> dict parsen."""
+        try:
+            if hasattr(mcp_result, "content") and mcp_result.content:
+                text = mcp_result.content[0].text
+                return json.loads(text)
+        except (json.JSONDecodeError, IndexError, AttributeError):
+            pass
+        return {"result": str(mcp_result)}
 
-        context += "\nAntworte im JSON-Format:\n"
-        context += '{"message": "Deine Antwort", "actions": [...]}\n\n'
-        context += "WICHTIG - Action Format:\n"
-        context += '- Verwende "type": "helper_function"\n'
-        context += '- Verwende "params" als Schluessel\n'
-        context += '- Beispiel: {"type": "helper_function", "function": "send_message", "params": {...}}\n\n'
-        context += "WICHTIG - Channel-Namen:\n"
-        context += '- channel_id kann ein Channel-NAME sein (z.B. "allgemein")\n\n'
-        context += "WICHTIG - Nachricht löschen:\n"
-        context += '- delete_message: Verwende "content" Parameter\n'
-        context += '- delete_last_message: Lösche die aktuellste Nachricht (benötigt KEINEN "content"!)\n'
-        context += '- Beispiel delete_last_message: {"function": "delete_last_message", "params": {"channel_id": "allgemein"}}\n\n'
-        context += "WICHTIG - Events mit Zeitraum:\n"
-        context += '- Wenn User "von X bis Y" fragt: Nutze from_date und to_date Parameter!\n'
-        context += '- Format erkannt: "von 2025-12-01 bis 2025-12-29" → {"from_date": "2025-12-01", "to_date": "2025-12-29"}\n'
-        context += '- Für Zeitraum in Tagen: Nutze days_ahead (z.B. "nächste 7 Tage" → {"days_ahead": 7})\n'
-        context += '- WICHTIG: Setze KEIN niedriges limit! Standard ist 50. Nur bei "zeige mir 5 Events" explizit limit setzen.\n\n'
-        context += "Beispiele:\n"
-        context += '- "Sende Nachricht Hallo in allgemein" → {"function": "send_message", "params": {"channel_id": "allgemein", "content": "Hallo"}}\n'
-        context += '- "Events von 2025-12-01 bis 2025-12-29" → {"function": "list_upcoming_events", "params": {"from_date": "2025-12-01", "to_date": "2025-12-29"}}\n'
-        context += '- "Events der nächsten 7 Tage" → {"function": "list_upcoming_events", "params": {"days_ahead": 7}}\n'
-        context += '- "Lösche die letzte Nachricht in allgemein" → {"function": "delete_last_message", "params": {"channel_id": "allgemein"}}\n'
-        context += '- "Zeige letzte Nachrichten in allgemein" → {"function": "get_channel_messages", "params": {"channel_id": "allgemein"}}\n'
-        context += '- "Zeige 10 Nachrichten aus general" → {"function": "get_channel_messages", "params": {"channel_id": "general", "limit": 10}}\n'
-        context += '- "Worum geht es im Channel allgemein?" → {"function": "summarize_channel", "params": {"channel_id": "allgemein"}}\n'
-        context += '- "Fasse die letzten 20 Nachrichten in general zusammen" → {"function": "summarize_channel", "params": {"channel_id": "general", "limit": 20}}\n'
+    def _format_tool_result(self, result: dict) -> str:
+        """Tool-Ergebnis huebsch formatieren fuer die Chat-Anzeige."""
+        if not isinstance(result, dict):
+            return str(result)
 
-        return context
+        formatted_parts = []
+
+        # Events huebsch machen
+        events_data = result.get('events') or (result.get('result', {}).get('events') if isinstance(result.get('result'), dict) else None)
+        if events_data is not None:
+            events = events_data if isinstance(events_data, list) else []
+            if events:
+                formatted_parts.append(f"\n**{len(events)} Events gefunden:**\n")
+                for event in events:
+                    name = event.get('name', 'Unbekannt')
+                    start = event.get('start_time', 'Keine Zeit')
+                    desc = event.get('description', '')
+                    location = event.get('location', '')
+                    try:
+                        dt = datetime.fromisoformat(start.replace('Z', '+00:00'))
+                        start_formatted = dt.strftime('%d.%m.%Y %H:%M')
+                    except Exception:
+                        start_formatted = start
+                    event_text = f"📅 **{name}**\n   🕐 {start_formatted}"
+                    if desc:
+                        event_text += f"\n   📝 {desc[:100]}..."
+                    if location:
+                        event_text += f"\n   📍 {location}"
+                    formatted_parts.append(event_text)
+            else:
+                formatted_parts.append("\n❌ **Keine Events gefunden**")
+            return "\n".join(formatted_parts)
+
+        # Channels
+        channels = result.get('channels') or (result.get('result', {}).get('channels') if isinstance(result.get('result'), dict) else None)
+        if channels is not None:
+            if channels:
+                formatted_parts.append(f"\n**{len(channels)} Channels gefunden:**\n")
+                type_map = {0: "💬 Text", 2: "🔊 Voice", 4: "📁 Kategorie", 5: "📢 Ankündigungen", 13: "🎭 Stage", 15: "🧵 Forum"}
+                for ch in channels:
+                    name = ch.get('name', 'Unbekannt')
+                    ch_type = ch.get('type', -1)
+                    type_text = type_map.get(ch_type, f"❓ Type {ch_type}")
+                    formatted_parts.append(f"{type_text} **{name}**")
+            return "\n".join(formatted_parts)
+
+        # Zusammenfassung
+        summary = result.get('summary') or (result.get('result', {}).get('summary') if isinstance(result.get('result'), dict) else None)
+        if summary is not None:
+            channel_name = result.get('channel', result.get('result', {}).get('channel', 'Unbekannt') if isinstance(result.get('result'), dict) else 'Unbekannt')
+            message_count = result.get('message_count', result.get('result', {}).get('message_count', 0) if isinstance(result.get('result'), dict) else 0)
+            formatted_parts.append(f"\n📋 **Zusammenfassung #{channel_name}** ({message_count} Nachrichten):\n")
+            formatted_parts.append(str(summary))
+            return "\n".join(formatted_parts)
+
+        # Nachrichten
+        messages = result.get('messages') or (result.get('result', {}).get('messages') if isinstance(result.get('result'), dict) else None)
+        if messages is not None:
+            channel_name = result.get('channel', result.get('result', {}).get('channel', 'Unbekannt') if isinstance(result.get('result'), dict) else 'Unbekannt')
+            if messages:
+                formatted_parts.append(f"\n**{len(messages)} Nachrichten aus #{channel_name}:**\n")
+                for msg in reversed(messages):
+                    author = msg.get('author', 'Unbekannt')
+                    content = msg.get('content', '(kein Text)')
+                    timestamp = msg.get('timestamp', '')
+                    extra_info = msg.get('extra_info', '')
+                    formatted_parts.append(f"👤 **{author}** ({timestamp}){extra_info}\n   {content}")
+            else:
+                formatted_parts.append(f"\n❌ **Keine Nachrichten in #{channel_name} gefunden**")
+            return "\n".join(formatted_parts)
+
+        # Online Members
+        online_count = result.get('online_count') or (result.get('result', {}).get('online_count') if isinstance(result.get('result'), dict) else None)
+        if online_count is not None:
+            msg = result.get('message', result.get('result', {}).get('message', '') if isinstance(result.get('result'), dict) else '')
+            members_list = result.get('members', result.get('result', {}).get('members', []) if isinstance(result.get('result'), dict) else [])
+            if msg:
+                formatted_parts.append(f"\n👥 {msg}")
+            if members_list:
+                formatted_parts.append(f"\n**Server-Mitglieder:**")
+                for m in members_list:
+                    display = m.get('display_name', m.get('username', 'Unbekannt'))
+                    formatted_parts.append(f"  • {display}")
+            return "\n".join(formatted_parts)
+
+        # Fallback: generische message
+        msg = result.get('message', result.get('result', {}).get('message') if isinstance(result.get('result'), dict) else None)
+        if msg:
+            return f"✅ {msg}"
+
+        return json.dumps(result, ensure_ascii=False, indent=2)
 
     async def cleanup(self):
         """Cleanup beim Beenden"""
@@ -552,23 +479,23 @@ class DiscordBotGradio:
             logger.error(f"Fehler beim Cleanup: {e}", exc_info=True)
 
 
-#Globale Bot-Instanz
+# Globale Bot-Instanz
 bot = DiscordBotGradio()
 
-#Bot beim Start initialisieren
+# Bot beim Start initialisieren
 logger.info("Starte automatische Bot-Initialisierung...")
 init_status = bot._run_async(bot.initialize())
 logger.info(f"Initialisierung abgeschlossen: {init_status}")
 
 
-#=== LLM PROVIDER MANAGEMENT ===
+# === LLM PROVIDER MANAGEMENT ===
 
-#Verfügbare Modelle pro Provider (Fallback-Listen, werden dynamisch aktualisiert)
+# Modelle pro Provider (werden dynamisch aktualisert wenn API Key da ist)
 LLM_MODELS = {
     "openai": [
         "gpt-5.2",
-        "gpt-5.1",           #Nov 2025
-        "gpt-5",             #Aug 2025
+        "gpt-5.1",           # Nov 2025
+        "gpt-5",             # Aug 2025
         "gpt-5-mini",
         "gpt-5-nano",
         "gpt-4o",
@@ -577,37 +504,36 @@ LLM_MODELS = {
     ],
     "groq": ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768", "gemma2-9b-it"],
     "gemini": ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-pro", "gemini-3-flash-preview"],
-    "ollama": [],  #Wird dynamisch gefüllt
+    "ollama": [],  # Wird dynamisch gefüllt
 }
 
-#Preise pro 1M Tokens (Input/Output in USD)
-#Werden dynamisch von LiteLLM geladen, Fallback auf hardcodierte Werte
+# Preise pro 1M Tokens - von LiteLLM geladen, sonst hardcoded
 MODEL_PRICES = {}
 _prices_loaded = False
 _prices_last_update = None
 
-#Fallback-Preise falls LiteLLM nicht erreichbar (Stand: Dezember 2025)
+# Fallback wenn LiteLLM nicht erreichbar
 FALLBACK_PRICES = {
-    #GPT-5 Serie (2025)
-    "gpt-5.2": (3.00, 15.00),        #Dez 2025 - geschätzt
-    "gpt-5.1": (2.50, 12.50),        #Nov 2025 - geschätzt
-    "gpt-5": (2.00, 10.00),          #Aug 2025 - geschätzt
-    "gpt-5-mini": (0.30, 1.20),      #geschätzt
-    "gpt-5-nano": (0.10, 0.40),      #geschätzt
-    #GPT-4 Serie
+    # GPT-5 Serie (2025)
+    "gpt-5.2": (3.00, 15.00),        # Dez 2025 - geschätzt
+    "gpt-5.1": (2.50, 12.50),        # Nov 2025 - geschätzt
+    "gpt-5": (2.00, 10.00),          # Aug 2025 - geschätzt
+    "gpt-5-mini": (0.30, 1.20),      # geschätzt
+    "gpt-5-nano": (0.10, 0.40),      # geschätzt
+    # GPT-4 Serie
     "gpt-4o": (2.50, 10.00),
     "gpt-4o-mini": (0.15, 0.60),
     "gpt-4-turbo": (10.00, 30.00),
     "gpt-3.5-turbo": (0.50, 1.50),
-    #Gemini Serie
-    "gemini-3-flash-preview": (0.50, 3.00),  #Gemini 3 Flash Preview (Dez 2025)
-    "gemini-3-pro": (2.00, 12.00),   #Gemini 3 Pro Preview (Nov 2025)
+    # Gemini Serie
+    "gemini-3-flash-preview": (0.50, 3.00),  # Gemini 3 Flash Preview (Dez 2025)
+    "gemini-3-pro": (2.00, 12.00),   # Gemini 3 Pro Preview (Nov 2025)
     "gemini-2.5-pro": (1.25, 10.00),
     "gemini-2.5-flash": (0.15, 0.60),
     "gemini-2.0-flash": (0.10, 0.40),
     "gemini-1.5-pro": (1.25, 5.00),
     "gemini-1.5-flash": (0.075, 0.30),
-    #Groq/Open Source
+    # Groq/Open Source
     "llama-3.3-70b": (0.59, 0.79),
     "llama-3.1-8b": (0.05, 0.08),
     "mixtral-8x7b": (0.24, 0.24),
@@ -616,12 +542,7 @@ FALLBACK_PRICES = {
 
 
 def fetch_litellm_prices() -> dict:
-    """
-    Lädt aktuelle Modellpreise von LiteLLM GitHub Repository.
-
-    Returns:
-        Dictionary mit Modellpreisen: {model_name: (input_price_per_1M, output_price_per_1M)}
-    """
+    """Aktuelle Preise von LiteLLM GitHub laden."""
     global MODEL_PRICES, _prices_loaded, _prices_last_update
 
     LITELLM_PRICES_URL = "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
@@ -637,7 +558,7 @@ def fetch_litellm_prices() -> dict:
                         return await response.json()
                     return None
 
-        #Führe async aus
+        # Führe async aus
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
@@ -646,7 +567,7 @@ def fetch_litellm_prices() -> dict:
             else:
                 data = asyncio.run(_fetch())
         except Exception:
-            #Fallback ---synchroner Request
+            # Fallback: synchroner Request
             import urllib.request
             import json
             with urllib.request.urlopen(LITELLM_PRICES_URL, timeout=10) as response:
@@ -656,29 +577,30 @@ def fetch_litellm_prices() -> dict:
             logger.warning("LiteLLM Preise: Keine Daten erhalten")
             return FALLBACK_PRICES
 
-        #Parse Preise ----- LiteLLM Format: kosten per token -> umrechnen in 1M token
+        # Parse Preise - LiteLLM Format: cost per token -> umrechnen in per 1M tokens
         prices = {}
         for model_name, model_info in data.items():
             if isinstance(model_info, dict):
                 input_cost = model_info.get('input_cost_per_token', 0)
                 output_cost = model_info.get('output_cost_per_token', 0)
 
-                #Manche Modelle haben nur 'input_cost_per_token'????
+                # Manche Modelle haben nur 'input_cost_per_token'
                 if input_cost or output_cost:
-                    #Umrechnung: pro Token -> pro 1M Tokens
+                    # Umrechnung: pro Token -> pro 1M Tokens
                     input_per_1m = input_cost * 1_000_000 if input_cost else 0
                     output_per_1m = output_cost * 1_000_000 if output_cost else 0
 
-                    #Speichere unter verschiedenen Varianten des Namens
+                    # Speichere unter verschiedenen Varianten des Namens
+                    # z.B. "openai/gpt-4o" -> speichere auch als "gpt-4o"
                     prices[model_name.lower()] = (input_per_1m, output_per_1m)
 
-                    #Extrahiere Modellname ohne Provider-Prefix
+                    # Extrahiere Modellname ohne Provider-Prefix
                     if '/' in model_name:
                         short_name = model_name.split('/')[-1].lower()
                         if short_name not in prices:
                             prices[short_name] = (input_per_1m, output_per_1m)
 
-        #Füge Ollama als kostenlos hinzu
+        # Füge Ollama als kostenlos hinzu
         prices["ollama"] = "free"
 
         logger.info(f"LiteLLM Preise geladen: {len(prices)} Modelle")
@@ -696,7 +618,7 @@ def fetch_litellm_prices() -> dict:
 
 
 def get_prices_status() -> str:
-    """Gibt Status der Preisdaten zurück"""
+    """Status-String fuer die Preisdaten."""
     if _prices_loaded and _prices_last_update:
         age = (datetime.now() - _prices_last_update).seconds // 60
         return f"LiteLLM ({len(MODEL_PRICES)} Modelle, vor {age} Min.)"
@@ -707,47 +629,42 @@ def get_prices_status() -> str:
 
 
 def get_model_price(model_name: str, provider: str = None) -> str:
-    """
-    Gibt den Preis für ein Modell als formatierten String zurück.
-
-    Returns:
-        String wie "$0.15/$0.60" (input/output per 1M tokens) oder "free"
-    """
+    """Preis als String (z.B. '$0.15/$0.60' pro 1M tokens)."""
     model_lower = model_name.lower()
 
-    #Ollama ist immer kostenlos
+    # Ollama ist immer kostenlos
     if provider == "ollama":
         return "lokal/free"
 
-    #Sicherstellen dass Preise geladen sind
+    # Preise muessen geladen sein
     if not MODEL_PRICES:
         return "?"
 
-    #Versuche verschiedene Lookup-Strategien
+    # Verschiedene Lookup-Strategien versuchen
     price_value = None
 
-    #1. Exakter Match mit Provider-Prefix
+    # 1. Exakter Match mit Provider-Prefix
     if provider:
         provider_key = f"{provider}/{model_lower}"
         if provider_key in MODEL_PRICES:
             price_value = MODEL_PRICES[provider_key]
 
-    #2. Exakter Match ohne Provider
+    # 2. Exakter Match ohne Provider
     if not price_value and model_lower in MODEL_PRICES:
         price_value = MODEL_PRICES[model_lower]
 
-    #3. Substring-Match (längster zuerst)
+    # 3. Substring-Match (laengster gewinnt)
     if not price_value:
         best_match = None
         best_match_len = 0
 
         for price_key, pv in MODEL_PRICES.items():
-            #Prüfe ob price_key im model_name enthalten ist
+            # Prüfe ob price_key im model_name enthalten ist
             if price_key in model_lower:
                 if len(price_key) > best_match_len:
                     best_match = pv
                     best_match_len = len(price_key)
-            #Oder umgekehrt (model_name im price_key)
+            # Oder umgekehrt (model_name im price_key)
             elif model_lower in price_key:
                 if len(model_lower) > best_match_len:
                     best_match = pv
@@ -759,7 +676,7 @@ def get_model_price(model_name: str, provider: str = None) -> str:
         if price_value == "free":
             return "free"
         input_price, output_price = price_value
-        #Kompakte Formatierung
+        # Kompakte Formatierung
         if input_price < 1:
             input_str = f"${input_price:.2f}"
         else:
@@ -770,30 +687,27 @@ def get_model_price(model_name: str, provider: str = None) -> str:
             output_str = f"${output_price:.0f}" if output_price == int(output_price) else f"${output_price:.1f}"
         return f"{input_str}/{output_str}"
 
-    return "?"  #Preis unbekannt
+    return "?"  # Preis unbekannt
 
 
 def fetch_openai_models(api_key: str) -> list[str]:
-    """
-    Ruft verfügbare OpenAI-Modelle via API ab.
-    Filtert auf Chat-Modelle (gpt-*).
-    """
+    """OpenAI-Modelle von der API holen (nur gpt-* Chat Modelle)."""
     try:
         from openai import OpenAI
         client = OpenAI(api_key=api_key)
         models_response = client.models.list()
 
-        #Filtere auf relevante Chat-Modelle
+        # Filtere auf relevante Chat-Modelle
         chat_models = []
         for model in models_response.data:
             model_id = model.id
-            #GPT-5, GPT-4 und GPT-3.5 Modelle die für Chat geeignet sind
+            # GPT-5, GPT-4 und GPT-3.5 Modelle die für Chat geeignet sind
             if model_id.startswith(('gpt-5', 'gpt-4', 'gpt-3.5')) and 'instruct' not in model_id:
                 chat_models.append(model_id)
 
         logger.info(f"OpenAI API: {len(chat_models)} Chat-Modelle gefunden")
 
-        #Sortiere --- -neueste/beste zuerst (GPT-5.2 > 5.1 > 5 > 4o)
+        # Sortiere: neueste/beste zuerst (GPT-5.2 > 5.1 > 5 > 4o)
         priority_order = [
             'gpt-5.2', 'gpt-5.1', 'gpt-5-mini', 'gpt-5-nano', 'gpt-5',
             'gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo'
@@ -807,26 +721,26 @@ def fetch_openai_models(api_key: str) -> list[str]:
 
         chat_models.sort(key=sort_key)
 
-        #Dedupliziere (z.B. gpt-4o und gpt-4o-2024-... ------> behalte nur Hauptversion)
+        # Dedupliziere (z.B. gpt-4o und gpt-4o-2024-... -> behalte nur Hauptversion)
         seen_prefixes = set()
         unique_models = []
         for model in chat_models:
-            #Extrahiere Basis-Modellname (ohne Datumssuffix)
+            # Extrahiere Basis-Modellname (ohne Datumssuffix)
             base_name = model.split('-202')[0] if '-202' in model else model
             if base_name not in seen_prefixes:
                 seen_prefixes.add(base_name)
                 unique_models.append(model)
 
-        #Wichtige Modelle die evtl nicht in der API sind (neueste)
+        # Wichtige Modelle die evtl. nicht in der API sind (neueste)
         important_models = [
-            "gpt-5.2",       #Dez 2025 - neuestes
-            "gpt-5.1",       #Nov 2025
-            "gpt-5",         #Aug 2025
+            "gpt-5.2",       # Dez 2025 - neuestes
+            "gpt-5.1",       # Nov 2025
+            "gpt-5",         # Aug 2025
             "gpt-5-mini",
             "gpt-5-nano",
         ]
 
-        #Füge wichtige Modelle am Anfang hinzu, falls nicht vorhanden
+        # Füge wichtige Modelle am Anfang hinzu, falls nicht vorhanden
         for model in reversed(important_models):
             if model not in unique_models:
                 unique_models.insert(0, model)
@@ -836,21 +750,18 @@ def fetch_openai_models(api_key: str) -> list[str]:
 
     except Exception as e:
         logger.warning(f"Fehler beim Abrufen der OpenAI-Modelle: {e}")
-        return LLM_MODELS["openai"]  #Fallback auf hardcodierte Liste
+        return LLM_MODELS["openai"]  # Fallback auf hardcodierte Liste
 
 
 def fetch_gemini_models(api_key: str) -> list[str]:
-    """
-    Ruft verfügbare Gemini-Modelle via API ab.
-    Nutzt aiohttp (bereits installiert) für den API-Call.
-    """
+    """Gemini-Modelle per API abfragen."""
     import asyncio
 
     async def _fetch():
         try:
             import aiohttp
 
-            #Google AI API Endpoint für Modell-Liste
+            # Google AI API Endpoint für Modell-Liste
             url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
 
             async with aiohttp.ClientSession() as session:
@@ -864,7 +775,7 @@ def fetch_gemini_models(api_key: str) -> list[str]:
 
                     logger.info(f"Gemini API: {len(models)} Modelle insgesamt von der API")
 
-                    #Sammle alle Chat-fähigen Modelle
+                    # Sammle alle Chat-fähigen Modelle
                     chat_models = []
                     skipped_models = []
 
@@ -873,13 +784,13 @@ def fetch_gemini_models(api_key: str) -> list[str]:
                         short_name = model_name.replace('models/', '')
                         supported_methods = model.get('supportedGenerationMethods', [])
 
-                        #Nur Modelle die generateContent unterstützen (Chat-fähig)
+                        # Nur Modelle die generateContent unterstützen (Chat-fähig)
                         if 'generateContent' in supported_methods:
-                            #Gemini-Modelle priorisieren, aber auch andere zeigen
+                            # Gemini-Modelle priorisieren, aber auch andere zeigen
                             if 'gemini' in short_name.lower():
                                 chat_models.append(short_name)
                             else:
-                                #Andere Modelle (z.B. learnlm, text-bison) auch aufnehmen
+                                # Andere Modelle (z.B. learnlm, text-bison) auch aufnehmen
                                 chat_models.append(short_name)
                         else:
                             skipped_models.append(f"{short_name} (no generateContent)")
@@ -888,21 +799,23 @@ def fetch_gemini_models(api_key: str) -> list[str]:
                     if skipped_models:
                         logger.debug(f"Übersprungene Modelle: {skipped_models[:5]}...")
 
-                    #Sortiere ---- Gemini zuerst, dann nach Version (neueste zuerst)
+                    # Sortiere: Gemini zuerst, dann nach Version (neueste zuerst)
                     priority_order = ['gemini-3', 'gemini-2.5', 'gemini-2.0', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-1.0', 'gemini']
 
                     def sort_key(model):
                         model_lower = model.lower()
-                        #Gemini-Modelle nach Version sortieren
+                        # Gemini-Modelle nach Version sortieren
                         for i, prefix in enumerate(priority_order):
                             if model_lower.startswith(prefix):
                                 return (i, model)
-                        #Nicht-Gemini-Modelle ans Ende
+                        # Nicht-Gemini-Modelle ans Ende
                         return (len(priority_order), model)
 
                     chat_models.sort(key=sort_key)
 
-                    #Preview-Modelle wie gemini-3-pro werden NICHT automatisch hinzugefügt???????
+                    # Hinweis: Preview-Modelle wie gemini-3-pro werden NICHT automatisch hinzugefügt,
+                    # da sie regional/account-beschränkt sein können.
+                    # Nur Modelle aus der API werden angezeigt.
 
                     logger.info(f"Gemini: {len(chat_models)} Modelle verfügbar: {chat_models}")
                     return chat_models if chat_models else LLM_MODELS["gemini"]
@@ -911,12 +824,12 @@ def fetch_gemini_models(api_key: str) -> list[str]:
             logger.warning(f"Fehler beim Abrufen der Gemini-Modelle: {e}")
             return LLM_MODELS["gemini"]
 
-    #Führe async Funktion aus
+    # Führe async Funktion aus
     try:
-        #Prüfe ob ein Event Loop läuft
+        # Prüfe ob ein Event Loop läuft
         loop = asyncio.get_event_loop()
         if loop.is_running():
-            #Nutze den Bots Event Loop
+            # Nutze den Bot's Event Loop
             future = asyncio.run_coroutine_threadsafe(_fetch(), bot.loop)
             return future.result(timeout=15)
         else:
@@ -927,9 +840,7 @@ def fetch_gemini_models(api_key: str) -> list[str]:
 
 
 def fetch_groq_models(api_key: str) -> list[str]:
-    """
-    Ruft verfügbare Groq-Modelle via API ab.
-    """
+    """Groq-Modelle per API abfragen."""
     try:
         from groq import Groq
         client = Groq(api_key=api_key)
@@ -938,10 +849,11 @@ def fetch_groq_models(api_key: str) -> list[str]:
         chat_models = []
         for model in models_response.data:
             model_id = model.id
+            # Groq hat hauptsächlich Llama, Mixtral, Gemma Modelle
             chat_models.append(model_id)
 
-        #Sortiere nach Beliebtheit/Qualität
-        priority_keywords = ['llama-3.3', 'llama-3.1-70b', 'llama-3.1-8b', 'mixtral', 'gemma']
+        # Sortiere nach Beliebtheit/Qualität
+        priority_keywords = ['gpt-oss-120b', 'gpt-oss-20b', 'llama-3.3', 'llama-3.1-70b', 'llama-3.1-8b', 'mixtral', 'gemma']
 
         def sort_key(model):
             for i, keyword in enumerate(priority_keywords):
@@ -956,54 +868,49 @@ def fetch_groq_models(api_key: str) -> list[str]:
 
     except Exception as e:
         logger.warning(f"Fehler beim Abrufen der Groq-Modelle: {e}")
-        return LLM_MODELS["groq"]  #Fallback auf hardcodierte Liste
+        return LLM_MODELS["groq"]  # Fallback auf hardcodierte Liste
 
-#Gespeicherte validierte API Keys und aktive Provider
+# Validierte Provider und Keys
 _validated_providers = {
     "openai": {"valid": False, "api_key": None},
     "groq": {"valid": False, "api_key": None},
     "gemini": {"valid": False, "api_key": None},
-    "ollama": {"valid": False, "api_key": None},  #Ollama braucht keinen Key, aber valid=True wenn läuft
+    "ollama": {"valid": False, "api_key": None},  # Ollama braucht keinen Key, aber valid=True wenn läuft
 }
 
-#Ausgewählte Modelle pro Provider (für Dropdown-Filter)
+# Ausgewaehlte Modelle pro Provider
 _selected_models = {
-    "openai": [],  #Liste der ausgewählten Modellnamen
+    "openai": [],  # Liste der ausgewählten Modellnamen
     "groq": [],
     "gemini": [],
     "ollama": [],
 }
 
-#Ollama Status
+# Ollama Status
 _ollama_available = False
 _ollama_models = []
 
 
 def check_ollama_available() -> tuple[bool, list[str]]:
-    """
-    Prüft ob Ollama läuft und gibt verfügbare Modelle zurück
-
-    Returns:
-        (available: bool, models: list[str])
-    """
+    """Preuft ob Ollama laeuft und welche Modelle installiert sind."""
     try:
         import ollama
-        #Versuche Modelle zu listen ----- wenn das klappt dann läuft Ollama
+        # Versuche Modelle zu listen - wenn das klappt, läuft Ollama
         models_response = ollama.list()
         models = []
 
-        #Ollama gibt ein ListResponse Objekt zurück mit 'models' Attribut
+        # Ollama gibt ein ListResponse Objekt zurück mit 'models' Attribut
         model_list = None
         if hasattr(models_response, 'models'):
-            #Neues Format: ListResponse Objekt
+            # Neues Format: ListResponse Objekt
             model_list = models_response.models
         elif isinstance(models_response, dict) and 'models' in models_response:
-            #Altes Format: Dictionary
+            # Altes Format: Dictionary
             model_list = models_response['models']
 
         if model_list:
             for model in model_list:
-                #Model kann ein Objekt oder Dict sein
+                # Model kann ein Objekt oder Dict sein
                 if hasattr(model, 'model'):
                     model_name = model.model
                 elif isinstance(model, dict):
@@ -1012,7 +919,7 @@ def check_ollama_available() -> tuple[bool, list[str]]:
                     model_name = str(model)
 
                 if model_name:
-                    #Entferne ":latest" Suffix wenn vorhanden
+                    # Entferne ":latest" Suffix wenn vorhanden
                     if model_name.endswith(':latest'):
                         model_name = model_name.replace(':latest', '')
                     models.append(model_name)
@@ -1028,26 +935,26 @@ def check_ollama_available() -> tuple[bool, list[str]]:
         logger.debug("Ollama Python-Paket nicht installiert")
         return False, []
     except Exception as e:
-        #Ollama nicht erreichbar
+        # Ollama nicht erreichbar (nicht gestartet oder Fehler)
         logger.debug(f"Ollama nicht verfügbar: {e}")
         return False, []
 
 
-#Ollama beim Start prüfen
+# Ollama beim Start prüfen
 logger.info("Prüfe Ollama Verfügbarkeit...")
 _ollama_available, _ollama_models = check_ollama_available()
 
 if _ollama_available:
     LLM_MODELS["ollama"] = _ollama_models
     _validated_providers["ollama"] = {"valid": True, "api_key": None}
-    #Erste 3 Modelle vorauswählen
+    # Erste 3 Modelle vorauswählen
     _selected_models["ollama"] = _ollama_models[:3] if _ollama_models else []
     logger.info(f"Ollama als LLM-Provider verfügbar: {len(_ollama_models)} lokale Modelle")
 else:
-    logger.info("Ollama nicht verfügbar nur Cloud-Provider nutzbar")
+    logger.info("Ollama nicht verfügbar - nur Cloud-Provider nutzbar")
 
-#LiteLLM Preise beim Start laden
-logger.info("Lade aktuelle Modellpreise von LiteLLM..")
+# LiteLLM Preise beim Start laden
+logger.info("Lade aktuelle Modellpreise von LiteLLM...")
 try:
     fetch_litellm_prices()
     logger.info(f"Preise geladen: {get_prices_status()}")
@@ -1055,18 +962,18 @@ except Exception as e:
     logger.warning(f"Preise konnten nicht geladen werden: {e}")
     MODEL_PRICES = FALLBACK_PRICES.copy()
 
-#Aktuell ausgewählter Provider und Modell
+# Aktuell ausgewählter Provider und Modell
 _current_llm_config = {
     "provider": bot.config.llm_provider if bot.config else None,
     "model": bot.config.llm_model if bot.config else None
 }
 
-#Wenn kein LLM konfiguriert aber Ollama verfügbar, nutze Ollama als default
+# Wenn kein LLM konfiguriert aber Ollama verfügbar, nutze Ollama als Default
 if (not _current_llm_config["provider"] or not bot.config.llm_available) and _ollama_available and _ollama_models:
     logger.info(f"Kein LLM konfiguriert - nutze Ollama als Fallback: {_ollama_models[0]}")
     _current_llm_config["provider"] = "ollama"
     _current_llm_config["model"] = _ollama_models[0]
-    #Initialisiere Ollama im Bot
+    # Initialisiere Ollama im Bot
     if bot.gemini:
         try:
             bot.gemini._init_llm_client("ollama", _ollama_models[0])
@@ -1074,10 +981,10 @@ if (not _current_llm_config["provider"] or not bot.config.llm_available) and _ol
         except Exception as e:
             logger.warning(f"Ollama Initialisierung fehlgeschlagen: {e}")
 
-#Wenn LLM aus .env konfiguriert ist auch als validiert markieren
+# Wenn LLM aus .env konfiguriert ist, auch als validiert markieren
 elif _current_llm_config["provider"] and bot.config.llm_available:
     provider = _current_llm_config["provider"]
-    #Hole API Key aus der Umgebung
+    # Hole API Key aus der Umgebung (wurde von Config geladen)
     api_key = None
     if provider == "openai":
         api_key = bot.config.openai_api_key
@@ -1104,7 +1011,7 @@ def _validate_api_key(provider: str, api_key: str) -> tuple[bool, str]:
     api_key = api_key.strip()
 
     try:
-        #Direkte API-Validierung ohne LLMClient
+        # Direkte API-Validierung ohne LLMClient (um Caching-Probleme zu vermeiden)
         if provider == "openai":
             from openai import OpenAI
             client = OpenAI(api_key=api_key)
@@ -1115,7 +1022,7 @@ def _validate_api_key(provider: str, api_key: str) -> tuple[bool, str]:
             )
             if response and response.choices:
                 return True, "API Key gültig! Test mit gpt-4o-mini erfolgreich."
-            return False, "API Key ungültig oder keine Antwort erhalten"
+            return False, "API Key ungültig - keine Antwort erhalten"
 
         elif provider == "groq":
             from groq import Groq
@@ -1127,10 +1034,10 @@ def _validate_api_key(provider: str, api_key: str) -> tuple[bool, str]:
             )
             if response and response.choices:
                 return True, "API Key gültig! Test mit llama-3.1-8b-instant erfolgreich."
-            return False, "API Key ungültig oder keine Antwort erhalten"
+            return False, "API Key ungültig - keine Antwort erhalten"
 
         elif provider == "gemini":
-            #Gemini via OpenAI-kompatible API
+            # Gemini via OpenAI-kompatible API
             from openai import OpenAI
             client = OpenAI(
                 api_key=api_key,
@@ -1153,9 +1060,9 @@ def _validate_api_key(provider: str, api_key: str) -> tuple[bool, str]:
         error_msg = str(e)
         logger.error(f"Validierung fehlgeschlagen für {provider}: {error_msg}")
         if "401" in error_msg or "unauthorized" in error_msg.lower():
-            return False, "API Key ungültig --- Authentifizierung fehlgeschlagen"
+            return False, "API Key ungültig - Authentifizierung fehlgeschlagen"
         elif "403" in error_msg or "forbidden" in error_msg.lower():
-            return False, "API Key ungültig --- Zugriff verweigert"
+            return False, "API Key ungültig - Zugriff verweigert"
         elif "rate" in error_msg.lower():
             return True, "API Key gültig (Rate Limit erreicht, aber Key funktioniert)"
         elif "invalid" in error_msg.lower() or "api" in error_msg.lower():
@@ -1169,7 +1076,7 @@ def validate_openai_key(api_key: str) -> str:
     success, message = _validate_api_key("openai", api_key)
     if success:
         _validated_providers["openai"] = {"valid": True, "api_key": api_key.strip()}
-        #Modelle dynamisch laden
+        # Modelle dynamisch laden
         models = fetch_openai_models(api_key.strip())
         LLM_MODELS["openai"] = models
         return f"✅ OpenAI: {message}\n📋 {len(models)} Modelle geladen"
@@ -1183,7 +1090,7 @@ def validate_groq_key(api_key: str) -> str:
     success, message = _validate_api_key("groq", api_key)
     if success:
         _validated_providers["groq"] = {"valid": True, "api_key": api_key.strip()}
-        #Modelle dynamisch laden
+        # Modelle dynamisch laden
         models = fetch_groq_models(api_key.strip())
         LLM_MODELS["groq"] = models
         return f"✅ Groq: {message}\n📋 {len(models)} Modelle geladen"
@@ -1197,7 +1104,7 @@ def validate_gemini_key(api_key: str) -> str:
     success, message = _validate_api_key("gemini", api_key)
     if success:
         _validated_providers["gemini"] = {"valid": True, "api_key": api_key.strip()}
-        #Modelle dynamisch laden
+        # Modelle dynamisch laden
         models = fetch_gemini_models(api_key.strip())
         LLM_MODELS["gemini"] = models
         return f"✅ Gemini: {message}\n📋 {len(models)} Modelle geladen"
@@ -1218,11 +1125,11 @@ def refresh_ollama_models() -> str:
         if _ollama_models:
             return f"✅ Ollama: {len(_ollama_models)} Modelle gefunden ({', '.join(_ollama_models[:3])}{'...' if len(_ollama_models) > 3 else ''})"
         else:
-            return "⚠️ Ollama läuft, aber keine Modelle installiert."
+            return "⚠️ Ollama läuft, aber keine Modelle installiert. Nutze 'ollama pull <model>' um Modelle zu installieren."
     else:
         LLM_MODELS["ollama"] = []
         _validated_providers["ollama"] = {"valid": False, "api_key": None}
-        return "❌ Ollama nicht erreichbar. Stelle sicher dass Ollama läuft."
+        return "❌ Ollama nicht erreichbar. Stelle sicher dass Ollama läuft (ollama serve)."
 
 
 def get_ollama_status() -> str:
@@ -1237,35 +1144,35 @@ def get_ollama_status() -> str:
 
 
 def get_validated_models() -> list[str]:
-    """Gibt Liste aller validierten Modelle zurück ( Dropdown)"""
+    """Gibt Liste aller validierten Modelle zurück (für Dropdown) mit Preisen"""
     models = []
 
-    #Aktueller Provider aus Config
+    # Aktueller Provider aus Config (kann None sein)
     current_provider = _current_llm_config.get("provider")
     current_model = _current_llm_config.get("model")
 
-    #Prüfe ob LLM verfügbar
+    # Prüfe ob LLM verfügbar
     llm_available = bot.gemini and bot.gemini.llm_available if bot.gemini else False
 
-    #Füge aktuelles Modell hinzu
+    # Füge aktuelles Modell hinzu (falls verfügbar)
     if current_model and current_provider and llm_available:
         price = get_model_price(current_model, current_provider)
         models.append(f"{current_provider}: {current_model} [{price}] (aktiv)")
 
-    #Füge validierte Provider hinzu
+    # Füge validierte Provider hinzu - NUR ausgewählte Modelle
     for provider, info in _validated_providers.items():
         if info["valid"]:
             selected = _selected_models.get(provider, [])
             available = LLM_MODELS.get(provider, [])
 
-            #Wenn keine Auswahl getroffen wurde zeige alle (max 5 Standard-Modelle)
+            # Wenn keine Auswahl getroffen wurde, zeige alle (max 5 Standard-Modelle)
             if not selected:
                 models_to_show = available[:5] if len(available) > 5 else available
             else:
-                #Nur ausgewählte Modelle anzeigen
+                # Nur ausgewählte Modelle anzeigen
                 models_to_show = [m for m in available if m in selected]
 
-            #Trenne empfohlene und andere Modelle
+            # Trenne empfohlene und andere Modelle
             recommended_models = []
             other_models = []
 
@@ -1273,7 +1180,7 @@ def get_validated_models() -> list[str]:
                 price = get_model_price(model, provider)
                 base_check = f"{provider}: {model}"
 
-                #Prüfe ob Modell bereits in Liste
+                # Prüfe ob Modell bereits in Liste
                 if any(base_check in m for m in models):
                     continue
 
@@ -1282,11 +1189,11 @@ def get_validated_models() -> list[str]:
                 else:
                     other_models.append(f"{provider}: {model} [{price}]")
 
-            #Empfohlene zuerst dann der Rest
+            # Empfohlene zuerst, dann der Rest
             models.extend(recommended_models)
             models.extend(other_models)
 
-    #wenn nichts validiert, zeige Hinweis
+    # Fallback: Wenn nichts validiert, zeige Hinweis
     if not models:
         models = ["Kein LLM konfiguriert - bitte API Key in Einstellungen eingeben"]
 
@@ -1299,7 +1206,7 @@ def update_selected_models(provider: str, selected: list[str]):
     logger.info(f"{provider}: {len(selected)} Modelle ausgewählt")
 
 
-#Empfohlene Modelle (gutes Preis-Leistungs-Verhältnis) #
+# Empfohlene Modelle (gutes Preis-Leistungs-Verhältnis) - EXAKTE Namen
 RECOMMENDED_MODELS = [
     "gemini-2.5-flash",
     "gpt-4o-mini",
@@ -1316,6 +1223,7 @@ def get_model_choices_with_prices(provider: str) -> list[str]:
     Empfohlene Modelle stehen an erster Stelle."""
     models = LLM_MODELS.get(provider, [])
 
+    # Trenne empfohlene und andere Modelle
     recommended = []
     others = []
 
@@ -1326,15 +1234,15 @@ def get_model_choices_with_prices(provider: str) -> list[str]:
         else:
             others.append(f"{model} [{price}]")
 
-    #Empfohlene zuerst dann der Rest
+    # Empfohlene zuerst, dann der Rest
     return recommended + others
 
 
 def extract_model_name(choice: str) -> str:
     """Extrahiert den Modellnamen aus einer Choice mit Preis und Tags"""
-    #"gpt-4o [$2.50/$10] (empfohlen)" -> "gpt-4o"
+    # "gpt-4o [$2.50/$10] (empfohlen)" -> "gpt-4o"
     import re
-    #Entferne (empfohlen), (aktiv) und [preis] Tags
+    # Entferne (empfohlen), (aktiv) und [preis] Tags
     result = choice
     result = re.sub(r'\s*\(empfohlen\)', '', result)
     result = re.sub(r'\s*\(aktiv\)', '', result)
@@ -1356,9 +1264,10 @@ def switch_llm_model(model_selection: str) -> str:
         return "[WARN] Kein Modell ausgewählt"
 
     try:
+        # Tags entfehrnen
         model_selection = model_selection.replace(" (aktiv)", "")
         model_selection = model_selection.replace(" (empfohlen)", "")
-        model_selection = re.sub(r'\s*\[.*?\]', '', model_selection)  #Entferne [preis]
+        model_selection = re.sub(r'\s*\[.*?\]', '', model_selection)  # Entferne [preis]
 
         parts = model_selection.split(": ", 1)
         if len(parts) != 2:
@@ -1368,18 +1277,19 @@ def switch_llm_model(model_selection: str) -> str:
         provider = provider.strip().lower()
         model = model.strip()
 
-        #Prüfe ob Provider validiert ist oder der aktuelle ist
+        # Prüfe ob Provider validiert ist oder der aktuelle ist
         current_provider = _current_llm_config.get("provider")
         if provider != current_provider:
             if not _validated_providers.get(provider, {}).get("valid"):
                 return f"[FEHLER] {provider} ist nicht validiert. Bitte erst API Key eingeben."
 
-        #API Key setzen falls validiert
+        # API Key setzen falls validiert
         if _validated_providers.get(provider, {}).get("valid"):
             api_key = _validated_providers[provider]["api_key"]
-            if api_key:  #Nur setzen wenn nicht None
+            if api_key:  # Nur setzen wenn nicht None
                 os.environ[f"{provider.upper()}_API_KEY"] = api_key
 
+        # LLM Client wechslen
         if bot.gemini:
             bot.gemini._init_llm_client(provider, model)
         else:
@@ -1404,7 +1314,7 @@ def get_current_llm_info() -> str:
     validated_list = [p for p, info in _validated_providers.items() if info["valid"]]
     validated_str = ", ".join(validated_list) if validated_list else "keine"
 
-    #Prüfe ob LLM verfügbar
+    # Prüfe ob LLM verfügbar
     llm_available = bot.gemini and bot.gemini.llm_available if bot.gemini else False
 
     if not provider or not model:
@@ -1415,14 +1325,14 @@ def get_current_llm_info() -> str:
         return f"**Aktuell:** {provider} - {model} ✅\n**Validierte Provider:** {validated_str}"
 
 
-#Wrapper-Funktionen für Gradio
+# Wrapper-Funktionen für Gradio
 def init_bot():
     if bot.is_initialized:
         return "[OK] Bot bereits initialisiert!"
     return bot._run_async(bot.initialize())
 
 
-#Cache für letzte Transkription
+# Cache für letzte Transkription (verhindert Duplikate)
 _last_transcribed_audio = {"path": None, "text": None}
 
 
@@ -1433,20 +1343,20 @@ def transcribe_audio_sync(audio, chat_history):
     if audio is None:
         return chat_history, chat_history, "[INFO] Keine Audio-Datei"
 
-    #Prüfe ob diese Audio-Datei bereits transkribiert wurde
+    # Prüfe ob diese Audio-Datei bereits transkribiert wurde
     if _last_transcribed_audio["path"] == audio:
         logger.info(f"Audio bereits transkribiert, überspringe: {audio}")
         return chat_history, chat_history, f"[INFO] Bereits transkribiert"
 
     try:
-        #Nur Transkription keine weitere Verarbeitung
+        # Nur Transkription, keine weitere Verarbeitung
         text = bot._run_async(bot.gemini.speech_to_text(audio))
         logger.info(f"Transkription angezeigt: {text}")
 
-        #Cache aktualisieren
+        # Cache aktualisieren
         _last_transcribed_audio = {"path": audio, "text": text}
 
-        #Füge Transkription zum Chat hinzu
+        # Transkription zum Chat hinzufuegen
         chat_history.append({
             "role": "user",
             "content": f"🎤 **Transkribierte Audiodatei:**\n{text}"
@@ -1462,13 +1372,14 @@ def process_audio_sync(audio, chat_history):
     """Verarbeitet die bereits transkribierte Audio-Nachricht"""
     global _last_transcribed_audio
 
-    #Prüfe ob LLM verfügbar ist
+    # Prüfe ob LLM verfügbar ist
     if not bot.gemini or not bot.gemini.llm_available:
         error_msg = "Kein LLM konfiguriert. Bitte gehe zu 'Einstellungen' und gib einen API Key ein."
         chat_history.append({"role": "assistant", "content": f"⚠️ {error_msg}"})
         return chat_history, chat_history, f"[WARN] {error_msg}", None
 
-    #Die Transkription ist bereits im Chat
+    # Die Transkription ist bereits im Chat (durch transcribe_audio_sync)
+    # Hole die letzte User-Message (die Transkription)
     if not chat_history or len(chat_history) == 0:
         return chat_history, chat_history, "[FEHLER] Keine Transkription gefunden", None
 
@@ -1476,18 +1387,19 @@ def process_audio_sync(audio, chat_history):
     if last_message.get('role') != 'user':
         return chat_history, chat_history, "[FEHLER] Letzte Nachricht ist keine User-Message", None
 
-    #Extrahiere Text aus der Transkription
+    # Extrahiere Text aus der Transkription
     content = last_message.get('content', '')
+    # Entferne das Präfix "🎤 **Transkribierte Audiodatei:**\n"
     user_text = content.replace('🎤 **Transkribierte Audiodatei:**\n', '').strip()
 
     try:
-        #Befehl ausführen
+        # Befehl ausführen (ohne nochmal zu transkribieren)
         response = bot._run_async(bot._execute_command(user_text))
 
-        #Bot-Antwort hinzufügen
+        # Bot-Antwort hinzufügen
         chat_history.append({"role": "assistant", "content": response})
 
-        #Cache zurücksetzen damit nächste Aufnahme transkribiert wird
+        # Cache zurücksetzen damit nächste Aufnahme transkribiert wird
         _last_transcribed_audio = {"path": None, "text": None}
 
         return chat_history, chat_history, f"[OK] Verarbeitet: {user_text[:50]}...", None
@@ -1501,7 +1413,7 @@ def process_text_sync(text, chat_history):
     if not text or text.strip() == "":
         return chat_history, chat_history, "[WARN] Keine Eingabe", ""
 
-    #Prüfe ob LLM verfügbar ist
+    # Prüfe ob LLM verfügbar ist
     if not bot.gemini or not bot.gemini.llm_available:
         error_msg = "Kein LLM konfiguriert. Bitte gehe zu 'Einstellungen' und gib einen API Key ein."
         chat_history.append({"role": "user", "content": text})
@@ -1509,10 +1421,10 @@ def process_text_sync(text, chat_history):
         return chat_history, chat_history, f"[WARN] {error_msg}", ""
 
     try:
-        #Befehl ausführen
+        # Befehl ausführen
         response = bot._run_async(bot._execute_command(text))
 
-        #ChatHistory aktualisieren
+        # Chat-History aktualisieren
         chat_history.append({"role": "user", "content": text})
         chat_history.append({"role": "assistant", "content": response})
 
@@ -1522,6 +1434,7 @@ def process_text_sync(text, chat_history):
         return chat_history, chat_history, f"[FEHLER] {str(e)}", ""
 
 
+# === KALENDER-FUNKTIONEN ===
 
 def generate_calendar_html(year: int, month: int, events: list) -> str:
     """
@@ -1537,20 +1450,20 @@ def generate_calendar_html(year: int, month: int, events: list) -> str:
     """
     berlin_tz = pytz.timezone('Europe/Berlin')
 
-    #Events nach Tag gruppieren
+    # Events nach Tag gruppieren
     events_by_day = {}
     for event in events:
         start_time_str = event.get('start_time') or event.get('scheduled_start_time')
         if start_time_str:
             try:
-                #Parse ISO format
+                # Parse ISO format
                 if isinstance(start_time_str, str):
                     utc_time = datetime.fromisoformat(start_time_str.replace('Z', '+00:00'))
                     berlin_time = utc_time.astimezone(berlin_tz)
                 else:
                     berlin_time = start_time_str
 
-                #Nur Events im angezeigten Monat
+                # Nur Events im angezeigten Monat
                 if berlin_time.year == year and berlin_time.month == month:
                     day = berlin_time.day
                     if day not in events_by_day:
@@ -1565,23 +1478,23 @@ def generate_calendar_html(year: int, month: int, events: list) -> str:
             except Exception as e:
                 logger.warning(f"Fehler beim Parsen von Event-Zeit: {e}")
 
-    #Deutsche Monatsnamen
+    # Deutsche Monatsnamen
     month_names = ['', 'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
                    'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember']
 
-    #Deutsche Wochentage
+    # Deutsche Wochentage (Montag = erster Tag)
     weekdays = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
 
-    #Kalender-Daten generieren
-    cal = calendar.Calendar(firstweekday=0)  #Montag = 0
+    # Kalender-Daten generieren
+    cal = calendar.Calendar(firstweekday=0)  # Montag = 0
     month_days = cal.monthdayscalendar(year, month)
 
-    #Heute markieren
+    # Heute markieren
     today = datetime.now(berlin_tz)
     is_current_month = (today.year == year and today.month == month)
     today_day = today.day if is_current_month else -1
 
-    #CSS Styles
+    # CSS Styles
     html = f'''
     <style>
         .calendar-container {{
@@ -1675,24 +1588,24 @@ def generate_calendar_html(year: int, month: int, events: list) -> str:
                 <tr>
     '''
 
-    #Wochentag-Header
+    # Wochentag-Header
     for i, day in enumerate(weekdays):
         weekend_class = ' class="weekend"' if i >= 5 else ''
         html += f'<th{weekend_class}>{day}</th>'
     html += '</tr></thead><tbody>'
 
-    #Wochen generieren
+    # Wochen generieren
     for week in month_days:
         html += '<tr>'
         for i, day in enumerate(week):
             if day == 0:
                 html += '<td class="empty-day"></td>'
             else:
-                #Klassen bestimmen
+                # Klassen bestimmen
                 day_classes = []
                 if day == today_day:
                     day_classes.append('today')
-                if i >= 5:  #Wochenende
+                if i >= 5:  # Wochenende
                     day_classes.append('weekend')
 
                 day_class = ' '.join(day_classes)
@@ -1700,18 +1613,19 @@ def generate_calendar_html(year: int, month: int, events: list) -> str:
                 html += '<td>'
                 html += f'<div class="day-number {day_class}">{day}</div>'
 
-                #Events für diesen Tag
+                # Events für diesen Tag
                 if day in events_by_day:
                     day_events = events_by_day[day]
                     html += '<div class="events-container">'
 
+                    # Zeige max 2 Events, dann "+X mehr"
                     for idx, evt in enumerate(day_events[:2]):
-                        #Event-Name
+                        # Event-Name escapen
                         name_escaped = evt["name"].replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
                         name_short = evt["name"][:12] + ('...' if len(evt["name"]) > 12 else '')
                         name_short = name_short.replace('<', '&lt;').replace('>', '&gt;')
 
-                        #Tooltip-Text erstellen
+                        # Tooltip-Text erstellen (für title-Attribut)
                         tooltip_lines = []
                         tooltip_lines.append(evt["name"])
                         tooltip_lines.append("─" * 20)
@@ -1730,7 +1644,7 @@ def generate_calendar_html(year: int, month: int, events: list) -> str:
                                 desc += "..."
                             tooltip_lines.append(desc)
 
-                        #Title-Attribut
+                        # Title-Attribut escapen
                         tooltip_text = "\n".join(tooltip_lines)
                         tooltip_text = tooltip_text.replace('"', '&quot;')
 
@@ -1748,15 +1662,16 @@ def generate_calendar_html(year: int, month: int, events: list) -> str:
     return html
 
 
-#Speichert Events
+# === EVENT CACHE ===
+# Speichert Events für ein ganzes Jahr, um Discord API Cooldown zu vermeiden
 
 class EventCache:
     """Cache für Discord Events - lädt einmal, nutzt oft"""
 
     def __init__(self):
-        self.events = []  #Alle Events
-        self.last_fetch = None  #Zeitpunkt des letzten API-Calls
-        self.cache_duration = 300  #Cache gilt 5 Minuten (in Sekunden)
+        self.events = []  # Alle Events
+        self.last_fetch = None  # Zeitpunkt des letzten API-Calls
+        self.cache_duration = 300  # Cache gilt 5 Minuten (in Sekunden)
 
     def is_valid(self) -> bool:
         """Prüft ob Cache noch gültig ist"""
@@ -1778,7 +1693,7 @@ class EventCache:
                     utc_time = datetime.fromisoformat(start_time_str.replace('Z', '+00:00'))
                     berlin_time = utc_time.astimezone(berlin_tz)
 
-                    #Dauer berechnen
+                    # Dauer berechnen
                     duration_str = ""
                     if end_time_str:
                         end_utc = datetime.fromisoformat(end_time_str.replace('Z', '+00:00'))
@@ -1813,7 +1728,7 @@ class EventCache:
         logger.info(f"Event-Cache aktualisiert: {len(events)} Events")
 
 
-#Globaler Cache
+# Globaler Cache
 event_cache = EventCache()
 
 
@@ -1841,24 +1756,56 @@ async def fetch_all_events_direct(guild_id: str, token: str) -> list:
                 return []
 
 
+async def _fetch_events_via_mcp() -> list:
+    """Events ueber MCP laden (Remote-Mode)."""
+    try:
+        mcp_result = await bot.mcp_client.client.call_tool(
+            "list_upcoming_events",
+            arguments={"limit": 100, "days_ahead": 90}
+        )
+        parsed = bot._parse_mcp_result(mcp_result)
+        events = parsed.get("events", [])
+        logger.info(f"MCP: {len(events)} Events geladen")
+        # Konvertiere zu Discord-Format fuer Kalennder
+        raw_events = []
+        for e in events:
+            raw_events.append({
+                "id": e.get("id"),
+                "name": e.get("name"),
+                "description": e.get("description"),
+                "scheduled_start_time": e.get("start_time"),
+                "scheduled_end_time": e.get("end_time"),
+                "entity_type": e.get("entity_type"),
+                "entity_metadata": {"location": e.get("location")} if e.get("location") else None,
+            })
+        return raw_events
+    except Exception as e:
+        logger.error(f"MCP Event-Fetch Fehler: {e}")
+        return []
+
+
 def load_calendar_sync(year: int, month: int) -> str:
     """Lädt Events aus Cache und generiert Kalender-HTML"""
     if not bot.is_initialized or not bot.config:
         return "<p style='color: red;'>Bot nicht initialisiert. Bitte warten...</p>"
 
     try:
-        #Cache prüfen und ggf. aktualisieren
+        # Cache prüfen und ggf. aktualisieren
         if not event_cache.is_valid():
             logger.info("Event-Cache abgelaufen, lade neu...")
-            all_events = bot._run_async(fetch_all_events_direct(
-                bot.config.discord_guild_id,
-                bot.config.discord_token
-            ))
+            if bot.config.mcp_mode == "remote":
+                # Remote: Events ueber MCP holen
+                all_events = bot._run_async(_fetch_events_via_mcp())
+            else:
+                all_events = bot._run_async(fetch_all_events_direct(
+                    bot.config.discord_guild_id,
+                    bot.config.discord_token
+                ))
             event_cache.update(all_events)
         else:
             logger.info("Nutze Event-Cache")
 
-        #Events für den Monat aus Cache holen
+        # Events für den Monat aus Cache holen
         filtered_events = event_cache.get_events_for_month(year, month)
         logger.info(f"Kalender: {len(filtered_events)} Events für {month}/{year}")
 
@@ -1871,7 +1818,7 @@ def load_calendar_sync(year: int, month: int) -> str:
 
 def refresh_calendar_with_reload(year: int, month: int) -> str:
     """Aktualisiert den Kalender und erzwingt Cache-Reload"""
-    event_cache.last_fetch = None  #Cache invalidieren
+    event_cache.last_fetch = None  # Cache invalidieren
     return load_calendar_sync(year, month)
 
 
@@ -1898,47 +1845,49 @@ def navigate_calendar(year: int, month: int, direction: str) -> tuple:
     return year, month, calendar_html
 
 
-#Gradio Interface erstellen
+# Gradio Interface erstellen
 def create_interface():
     """Erstellt Gradio Web-Interface"""
 
-    #Minimalistisches Theme
+    # Minimalistisches Theme
     theme = gr.themes.Base()
 
-    #Aktuelles Datum für Kalender-Initialisierung
+    # Aktuelles Datum für Kalender-Initialisierung
     today = datetime.now(pytz.timezone('Europe/Berlin'))
     initial_year = today.year
     initial_month = today.month
 
     with gr.Blocks(title="Discord Voice Bot", theme=theme) as demo:
-        gr.Markdown("#Discord Voice Bot")
+        gr.Markdown("# Discord Voice Bot")
 
-        #Session State für geräte-spezifischen Chat-Verlauf
+        # Session State für geräte-spezifischen Chat-Verlauf
         chat_state = gr.State([])
 
-        #State für Kalender-Navigation
+        # State für Kalender-Navigation
         calendar_year = gr.State(initial_year)
         calendar_month = gr.State(initial_month)
 
-        #Browser State für API-Keys
+        # Browser State für API-Keys (wird im LocalStorage des Browsers gespeichert)
+        # Jeder Benutzer hat seine eigenen Keys, die nach Refresh erhalten bleiben
         saved_api_keys = gr.BrowserState(
             default_value={"openai": "", "groq": "", "gemini": ""},
             storage_key="discord_bot_api_keys"
         )
 
         with gr.Tabs():
+            # === TAB 1: CHAT ===
             with gr.TabItem("Chat"):
                 with gr.Row():
                     with gr.Column(scale=3):
-                        #Chat-Display
+                        # Chat-Display
                         chatbot = gr.Chatbot(
                             label="Konversation",
                             height=500,
                             show_label=True,
-                            type="messages"  #Nutze Messages-Format (OpenAI-style)
+                            type="messages"  # Nutze Messages-Format (OpenAI-style)
                         )
 
-                        #Status-Zeile
+                        # Status-Zeile
                         status = gr.Textbox(
                             label="Status",
                             interactive=False,
@@ -1946,8 +1895,8 @@ def create_interface():
                         )
 
                     with gr.Column(scale=1):
-                        #LLM-Modell Auswahl
-                        gr.Markdown("###LLM Modell")
+                        # LLM-Modell Auswahl
+                        gr.Markdown("### LLM Modell")
                         llm_dropdown = gr.Dropdown(
                             choices=get_validated_models(),
                             value=get_validated_models()[0] if get_validated_models() else None,
@@ -1963,8 +1912,8 @@ def create_interface():
 
                         gr.Markdown("---")
 
-                        #Audio-Eingabe
-                        gr.Markdown("###Spracheingabe")
+                        # Audio-Eingabe
+                        gr.Markdown("### Spracheingabe")
                         audio_input = gr.Audio(
                             sources=["microphone"],
                             type="filepath",
@@ -1975,8 +1924,8 @@ def create_interface():
 
                         gr.Markdown("---")
 
-                        #Text-Eingabe
-                        gr.Markdown("###Texteingabe")
+                        # Text-Eingabe
+                        gr.Markdown("### Texteingabe")
                         text_input = gr.Textbox(
                             label="Befehl",
                             placeholder="z.B. Zeige mir alle Events...",
@@ -1984,9 +1933,9 @@ def create_interface():
                         )
                         text_btn = gr.Button("Text senden", variant="secondary")
 
-                #Beispiele
+                # Beispiele
                 gr.Markdown("---")
-                gr.Markdown("###Beispiel-Befehle")
+                gr.Markdown("### Beispiel-Befehle")
                 gr.Examples(
                     examples=[
                         ["Zeige mir alle Events in den nächsten 7 Tagen"],
@@ -2001,35 +1950,37 @@ def create_interface():
                     inputs=[text_input]
                 )
 
+            # === TAB 2: KALENDER ===
             with gr.TabItem("Kalender"):
-                gr.Markdown("###Event-Kalender")
+                gr.Markdown("### Event-Kalender")
                 gr.Markdown("*Alle Discord-Events auf einen Blick*")
 
-                #Navigation
+                # Navigation
                 with gr.Row():
                     prev_btn = gr.Button("< Vorheriger Monat", size="sm")
                     today_btn = gr.Button("Heute", variant="primary", size="sm")
                     next_btn = gr.Button("Nächster Monat >", size="sm")
                     refresh_btn = gr.Button("Aktualisieren", variant="secondary", size="sm")
 
-                #Kalender-Anzeige
+                # Kalender-Anzeige
                 calendar_html = gr.HTML(
                     value="<p>Kalender wird geladen...</p>",
                     label="Kalender"
                 )
 
-                #Event-Liste für ausgewählten Monat
+                # Event-Liste für ausgewählten Monat
                 gr.Markdown("---")
                 gr.Markdown("*Hover über Events für Details. Events werden in Discord-Blau angezeigt.*")
 
+            # === TAB 3: EINSTELLUNGEN ===
             with gr.TabItem("Einstellungen"):
-                gr.Markdown("###LLM Provider Konfiguration")
+                gr.Markdown("### LLM Provider Konfiguration")
                 gr.Markdown("*Gib deine API Keys ein und validiere sie. Nach der Validierung kannst du auswählen, welche Modelle im Dropdown erscheinen sollen.*")
 
                 with gr.Row():
-                    #OpenAI
+                    # OpenAI
                     with gr.Column():
-                        gr.Markdown("####OpenAI")
+                        gr.Markdown("#### OpenAI")
                         openai_key_input = gr.Textbox(
                             label="API Key",
                             placeholder="sk-...",
@@ -2050,9 +2001,9 @@ def create_interface():
                             visible=False
                         )
 
-                    #Groq
+                    # Groq
                     with gr.Column():
-                        gr.Markdown("####Groq")
+                        gr.Markdown("#### Groq")
                         groq_key_input = gr.Textbox(
                             label="API Key",
                             placeholder="gsk_...",
@@ -2073,9 +2024,9 @@ def create_interface():
                             visible=False
                         )
 
-                    #Gemini
+                    # Gemini
                     with gr.Column():
-                        gr.Markdown("####Google Gemini")
+                        gr.Markdown("#### Google Gemini")
                         gemini_key_input = gr.Textbox(
                             label="API Key",
                             placeholder="AIza...",
@@ -2098,8 +2049,8 @@ def create_interface():
 
                 gr.Markdown("---")
 
-                #Ollama (Lokal)
-                gr.Markdown("###Lokale Modelle (Ollama)")
+                # Ollama (Lokal)
+                gr.Markdown("### Lokale Modelle (Ollama)")
                 gr.Markdown("*Ollama ermöglicht das Ausführen von LLMs lokal ohne API Key.*")
 
                 with gr.Row():
@@ -2113,11 +2064,11 @@ def create_interface():
                     with gr.Column(scale=1):
                         ollama_refresh_btn = gr.Button("🔄 Aktualisieren", variant="secondary", size="sm")
 
-                #Ollama Modellauswahl
+                # Ollama Modellauswahl
                 ollama_models_group = gr.CheckboxGroup(
                     choices=[f"{m} [lokal/free]" for m in _ollama_models] if _ollama_models else [],
                     label="Modelle für Dropdown auswählen",
-                    value=[f"{m} [lokal/free]" for m in _ollama_models[:3]] if _ollama_models else [],  #Erste 3 vorausgewählt
+                    value=[f"{m} [lokal/free]" for m in _ollama_models[:3]] if _ollama_models else [],  # Erste 3 vorausgewählt
                     visible=_ollama_available and len(_ollama_models) > 0
                 )
 
@@ -2125,8 +2076,8 @@ def create_interface():
 
                 gr.Markdown("---")
 
-                #Preisdaten-Sektion
-                gr.Markdown("###Modellpreise")
+                # Preisdaten-Sektion
+                gr.Markdown("### Modellpreise")
                 gr.Markdown("*Preise werden von [LiteLLM](https://github.com/BerriAI/litellm) geladen (Input/Output pro 1M Tokens)*")
 
                 with gr.Row():
@@ -2141,7 +2092,7 @@ def create_interface():
                         prices_refresh_btn = gr.Button("Preise aktualisieren", variant="secondary", size="sm")
 
                 gr.Markdown("---")
-                gr.Markdown("###Hinweise")
+                gr.Markdown("### Hinweise")
                 gr.Markdown("""
                 - Nach erfolgreicher Validierung erscheinen die Modelle im Dropdown auf dem Chat-Tab
                 - API Keys werden nur im Speicher gehalten (nicht gespeichert)
@@ -2151,14 +2102,15 @@ def create_interface():
                 - **Preise** werden beim Start automatisch von LiteLLM geladen
                 """)
 
+            # === TAB 4: TUTORIAL ===
             with gr.TabItem("Tutorial"):
-                gr.Markdown("###Anleitung")
+                gr.Markdown("### Anleitung")
                 gr.Markdown("Diese App ermoeglicht die sprachbasierte Interaktion mit Discord ueber einen MCP Server.")
 
                 gr.Markdown("---")
-                gr.Markdown("###Verfuegbare Befehle")
+                gr.Markdown("### Verfuegbare Befehle")
 
-                gr.Markdown("####Nachrichten")
+                gr.Markdown("#### Nachrichten")
                 gr.Markdown("""
 | Funktion | Beispiel |
 |----------|----------|
@@ -2171,7 +2123,7 @@ def create_interface():
 | Channel zusammenfassen (mit Limit) | "Fasse die letzten 50 Nachrichten in general zusammen" |
                 """)
 
-                gr.Markdown("####Events")
+                gr.Markdown("#### Events")
                 gr.Markdown("""
 | Funktion | Beispiel |
 |----------|----------|
@@ -2184,7 +2136,7 @@ def create_interface():
 | Event loeschen | "Loesche Event Meeting" |
                 """)
 
-                gr.Markdown("####Server und Mitglieder")
+                gr.Markdown("#### Server und Mitglieder")
                 gr.Markdown("""
 | Funktion | Beispiel |
 |----------|----------|
@@ -2197,7 +2149,7 @@ def create_interface():
                 """)
 
                 gr.Markdown("---")
-                gr.Markdown("###Tabs")
+                gr.Markdown("### Tabs")
                 gr.Markdown("""
 | Tab | Beschreibung |
 |-----|--------------|
@@ -2208,7 +2160,7 @@ def create_interface():
                 """)
 
                 gr.Markdown("---")
-                gr.Markdown("###Technische Hinweise")
+                gr.Markdown("### Technische Hinweise")
                 gr.Markdown("""
 - Die App nutzt das Model Context Protocol (MCP) zur Discord-Kommunikation
 - Unterstuetzte LLM-Provider: OpenAI, Groq, Google Gemini, Ollama (lokal)
@@ -2216,8 +2168,9 @@ def create_interface():
 - Bot-Token und Guild-ID muessen in der .env Datei konfiguriert sein
                 """)
 
+        # === EVENT HANDLERS ===
 
-        #Chat-Events
+        # Chat-Events
         audio_input.change(
             fn=transcribe_audio_sync,
             inputs=[audio_input, chat_state],
@@ -2242,7 +2195,7 @@ def create_interface():
             outputs=[chatbot, chat_state, status, text_input]
         )
 
-        #Kalender-Events
+        # Kalender-Events
         def go_prev(year, month):
             return navigate_calendar(year, month, "prev")
 
@@ -2276,16 +2229,16 @@ def create_interface():
             outputs=[calendar_html]
         )
 
-        #Kalender beim Start laden
+        # Kalender beim Start laden
         demo.load(
             fn=load_calendar_sync,
             inputs=[calendar_year, calendar_month],
             outputs=[calendar_html]
         )
 
-        #=== LLM EINSTELLUNGEN EVENT HANDLERS ===
+        # === LLM EINSTELLUNGEN EVENT HANDLERS ===
 
-        #LLM Modell wechseln
+        # LLM Modell wechseln
         def on_llm_change(model_selection):
             result = switch_llm_model(model_selection)
             info = get_current_llm_info()
@@ -2297,22 +2250,22 @@ def create_interface():
             outputs=[status, llm_status]
         )
 
-        #OpenAI validieren
+        # OpenAI validiren
         def on_openai_validate(api_key, saved_keys):
             result = validate_openai_key(api_key)
             if _validated_providers["openai"]["valid"]:
-                #Modelle mit Preisen für CheckboxGroup
+                # Modelle mit Preisen für CheckboxGroup
                 choices = get_model_choices_with_prices("openai")
-                #Erste 5 vorauswählen
+                # Erste 5 vorauswählen
                 default_selected = choices[:5]
-                #Auswahl speichern
+                # Auswahl speichern
                 _selected_models["openai"] = [extract_model_name(c) for c in default_selected]
                 checkbox_update = gr.update(choices=choices, value=default_selected, visible=True)
-                #API-Key im Browser speichern
+                # API-Key im Browser speichern
                 saved_keys["openai"] = api_key.strip()
             else:
                 checkbox_update = gr.update(visible=False)
-                saved_keys["openai"] = ""  #Bei Fehler Key entfernen
+                saved_keys["openai"] = ""  # Bei Fehler Key entfernen
             dropdown_update = update_model_dropdown()
             info = get_current_llm_info()
             return result, checkbox_update, dropdown_update, info, saved_keys
@@ -2323,7 +2276,7 @@ def create_interface():
             outputs=[openai_status, openai_models_group, llm_dropdown, llm_status, saved_api_keys]
         )
 
-        #OpenAI Modellauswahl ändern
+        # OpenAI Modellauswahl ändern
         def on_openai_models_change(selected):
             model_names = [extract_model_name(s) for s in selected]
             update_selected_models("openai", model_names)
@@ -2335,7 +2288,7 @@ def create_interface():
             outputs=[llm_dropdown]
         )
 
-        #Groq validieren
+        # Groq validieren
         def on_groq_validate(api_key, saved_keys):
             result = validate_groq_key(api_key)
             if _validated_providers["groq"]["valid"]:
@@ -2343,7 +2296,7 @@ def create_interface():
                 default_selected = choices[:5]
                 _selected_models["groq"] = [extract_model_name(c) for c in default_selected]
                 checkbox_update = gr.update(choices=choices, value=default_selected, visible=True)
-                #API-Key im Browser speichern
+                # API-Key im Browser speichern
                 saved_keys["groq"] = api_key.strip()
             else:
                 checkbox_update = gr.update(visible=False)
@@ -2358,7 +2311,7 @@ def create_interface():
             outputs=[groq_status, groq_models_group, llm_dropdown, llm_status, saved_api_keys]
         )
 
-        #Groq Modellauswahl ändern
+        # Groq Modellauswahl ändern
         def on_groq_models_change(selected):
             model_names = [extract_model_name(s) for s in selected]
             update_selected_models("groq", model_names)
@@ -2370,7 +2323,7 @@ def create_interface():
             outputs=[llm_dropdown]
         )
 
-        #Gemini validieren
+        # Gemini validieren
         def on_gemini_validate(api_key, saved_keys):
             result = validate_gemini_key(api_key)
             if _validated_providers["gemini"]["valid"]:
@@ -2378,7 +2331,7 @@ def create_interface():
                 default_selected = choices[:5]
                 _selected_models["gemini"] = [extract_model_name(c) for c in default_selected]
                 checkbox_update = gr.update(choices=choices, value=default_selected, visible=True)
-                #API-Key im Browser speichern
+                # API-Key im Browser speichern
                 saved_keys["gemini"] = api_key.strip()
             else:
                 checkbox_update = gr.update(visible=False)
@@ -2393,7 +2346,7 @@ def create_interface():
             outputs=[gemini_status, gemini_models_group, llm_dropdown, llm_status, saved_api_keys]
         )
 
-        #Gemini Modellauswahl ändern
+        # Gemini Modellauswahl ändern
         def on_gemini_models_change(selected):
             model_names = [extract_model_name(s) for s in selected]
             update_selected_models("gemini", model_names)
@@ -2405,13 +2358,13 @@ def create_interface():
             outputs=[llm_dropdown]
         )
 
-        #Ollama aktualisieren
+        # Ollama aktualisieren
         def on_ollama_refresh():
             result = refresh_ollama_models()
             status = get_ollama_status()
             if _ollama_available and _ollama_models:
                 choices = [f"{m} [lokal/free]" for m in _ollama_models]
-                default_selected = choices[:3]  #Erste 3 vorauswählen
+                default_selected = choices[:3]  # Erste 3 vorauswählen
                 _selected_models["ollama"] = [extract_model_name(c) for c in default_selected]
                 checkbox_update = gr.update(choices=choices, value=default_selected, visible=True)
             else:
@@ -2426,7 +2379,7 @@ def create_interface():
             outputs=[ollama_status, ollama_models_group, llm_dropdown, llm_status]
         )
 
-        #Ollama Modellauswahl ändern
+        # Ollama Modellauswahl ändern
         def on_ollama_models_change(selected):
             model_names = [extract_model_name(s) for s in selected]
             update_selected_models("ollama", model_names)
@@ -2438,7 +2391,7 @@ def create_interface():
             outputs=[llm_dropdown]
         )
 
-        #Preise aktualisieren
+        # Preise aktualisieren
         def on_prices_refresh():
             fetch_litellm_prices()
             status = get_prices_status()
@@ -2451,6 +2404,7 @@ def create_interface():
             outputs=[prices_status, llm_dropdown]
         )
 
+        # === API-Keys aus Browser wiederherstelen ===
         def on_page_load(saved_keys):
             """Lädt gespeicherte API-Keys aus dem Browser und validiert sie automatisch"""
             results = {
@@ -2473,7 +2427,7 @@ def create_interface():
                     update_model_dropdown(), get_current_llm_info()
                 )
 
-            #OpenAI Key wiederherstellen
+            # OpenAI Key wiederherstellen
             if saved_keys.get("openai"):
                 results["openai_key"] = saved_keys["openai"]
                 validation_result = validate_openai_key(saved_keys["openai"])
@@ -2484,7 +2438,7 @@ def create_interface():
                     _selected_models["openai"] = [extract_model_name(c) for c in default_selected]
                     results["openai_checkbox"] = gr.update(choices=choices, value=default_selected, visible=True)
 
-            #Groq Key wiederherstellen
+            # Groq Key wiederherstellen
             if saved_keys.get("groq"):
                 results["groq_key"] = saved_keys["groq"]
                 validation_result = validate_groq_key(saved_keys["groq"])
@@ -2495,7 +2449,7 @@ def create_interface():
                     _selected_models["groq"] = [extract_model_name(c) for c in default_selected]
                     results["groq_checkbox"] = gr.update(choices=choices, value=default_selected, visible=True)
 
-            #Gemini Key wiederherstellen
+            # Gemini Key wiederherstellen
             if saved_keys.get("gemini"):
                 results["gemini_key"] = saved_keys["gemini"]
                 validation_result = validate_gemini_key(saved_keys["gemini"])
@@ -2530,13 +2484,13 @@ def create_interface():
 if __name__ == "__main__":
     logger.info("Starte Discord Voice Bot Gradio Interface...")
 
-    #Interface erstellen und starten
+    # Interface erstellen und starten
     demo = create_interface()
 
-    #Server starten
+    # Server starten
     demo.launch(
-        server_name="0.0.0.0",  #Erreichbar im Netzwerk
+        server_name="0.0.0.0",  # Erreichbar im Netzwerk
         server_port=7860,
-        share=False,  #Setze auf True für öffentlichen Link
+        share=False,  # Setze auf True für öffentlichen Link
         show_error=True
     )

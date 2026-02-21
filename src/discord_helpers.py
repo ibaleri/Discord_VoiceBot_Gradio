@@ -7,7 +7,7 @@ import logging
 import re
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List
-import dateparser  #python-dateparser für natürliche Zeitangaben
+import dateparser  # python-dateparser für natürliche Zeitangaben
 import pytz
 
 logger = logging.getLogger(__name__)
@@ -27,9 +27,9 @@ class DiscordEventHelper:
     def __init__(self, config, mcp_client, gemini=None):
         self.config = config
         self.mcp_client = mcp_client
-        self.gemini = gemini  #Für Rechtschreibprüfung
+        self.gemini = gemini  # Für Rechtschreibprüfung
         self.guild_id = config.discord_guild_id
-        self.timezone = pytz.timezone('Europe/Berlin')  #Deutsche Zeitzone
+        self.timezone = pytz.timezone('Europe/Berlin')  # Deutsche Zeitzone
         self.channels_cache = {}
         self.events_cache = []
 
@@ -38,7 +38,7 @@ class DiscordEventHelper:
         try:
             logger.info("Initialisiere Discord Helper...")
 
-            #Channels laden und cachen
+            # Channels laden und cachen
             await self._load_channels()
 
             logger.info(f"Discord Helper initialisiert - {len(self.channels_cache)} Channels geladen")
@@ -107,7 +107,8 @@ class DiscordEventHelper:
         duration_hours: float = 1.0,
         location: str = "Discord",
         event_type: str = "online",
-        channel_id: Optional[str] = None
+        channel_id: Optional[str] = None,
+        triggered_by: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Erstellt ein Discord Scheduled Event mit benutzerfreundlichen Parametern
@@ -127,26 +128,30 @@ class DiscordEventHelper:
         try:
             logger.info(f"Erstelle Event: {name} - {start_time}")
 
-            #Fallback für leere Beschreibung
+            # Fallback für leere Beschreibung
             if not description or description.strip() == "":
                 description = f"Event: {name}"
 
-            #Name und Beschreibung normalisieren und korrigieren
+            # User-Attribution anhaengen
+            if triggered_by and triggered_by != "Anonym":
+                description = f"{description}\n\nErstellt von: {triggered_by}"
+
+            # Name und Beschreibung normalisieren und korrigieren
             name = await self._normalize_and_correct_text(name)
             description = await self._normalize_and_correct_text(description)
 
-            #Zeitangabe parsen
+            # Zeitangabe parsen
             start_dt, end_dt = self._parse_time(start_time, duration_hours)
 
-            #Entity type bestimmen
+            # Entity type bestimmen
             entity_type_map = {
-                "online": 3,    #EXTERNAL
-                "voice": 2,     #VOICE
-                "stage": 1      #STAGE_INSTANCE
+                "online": 3,    # EXTERNAL
+                "voice": 2,     # VOICE
+                "stage": 1      # STAGE_INSTANCE
             }
             entity_type = entity_type_map.get(event_type.lower(), 3)
 
-            #Event-Daten zusammenstellen
+            # Event-Daten zusammenstellen
             event_data = {
                 "name": name,
                 "description": description,
@@ -156,28 +161,28 @@ class DiscordEventHelper:
                 "entity_type": entity_type
             }
 
-            #Type-spezifische Felder
-            if entity_type == 3:  #External
+            # Type-spezifische Felder
+            if entity_type == 3:  # External
                 event_data["entity_metadata"] = {"location": location}
-            elif entity_type in [1, 2]:  #Voice/Stage
+            elif entity_type in [1, 2]:  # Voice/Stage
                 if not channel_id:
-                    #Versuche ersten Voice Channel zu fiden
+                    # Versuche ersten Voice Channel zu finden
                     channel_id = await self._find_voice_channel()
                 if channel_id:
                     event_data["channel_id"] = channel_id
                 else:
                     raise ValueError("Channel ID erforderlich für Voice/Stage Events")
 
-            #Event erstellen via MCP
+            # Event erstellen via MCP
             endpoint = f"/guilds/{self.guild_id}/scheduled-events"
             result = await self.mcp_client.call_discord_api("POST", endpoint, event_data)
 
             logger.info(f"[OK] Event erstellt: {result.get('id', 'unknown')}")
 
-            #Cache aktualisieren
+            # Cache aktualisieren
             self.events_cache.append(result)
 
-            #Konvertiere UTC zurück zu Berlin-Zeit für Anzeige
+            # Konvertiere UTC zurück zu Berlin-Zeit für Anzeige
             start_berlin = start_dt.astimezone(self.timezone)
             end_berlin = end_dt.astimezone(self.timezone)
 
@@ -185,9 +190,9 @@ class DiscordEventHelper:
                 "success": True,
                 "event_id": result.get('id'),
                 "event_name": name,
-                "description": description,  #Beschreibung für GUI
-                "location": location,        #Location für GUI
-                "duration_hours": duration_hours,  #Dauer für GUI
+                "description": description,  # Beschreibung für GUI
+                "location": location,        # Location für GUI
+                "duration_hours": duration_hours,  # Dauer für GUI
                 "start_time": start_berlin.strftime('%Y-%m-%d %H:%M'),
                 "end_time": end_berlin.strftime('%Y-%m-%d %H:%M'),
                 "data": result
@@ -224,7 +229,7 @@ class DiscordEventHelper:
             Liste der Events mit erweiterten Informationen
             Wenn group_by_days=True: Gruppiert nach Tagen mit deutscher Zeitzone
         """
-        #Timeframe-Preset in days_ahead umwandeln falls angegeben
+        # Timeframe-Preset in days_ahead umwandeln falls angegeben
         if timeframe and not days_ahead:
             timeframe_map = {
                 "today": 1,
@@ -240,65 +245,65 @@ class DiscordEventHelper:
             endpoint = f"/guilds/{self.guild_id}/scheduled-events"
             result = await self.mcp_client.call_discord_api("GET", endpoint)
 
-            #Handle wrapped list format 
+            # FastMCP wrapt Listen in {items: [...]}
             events = result.get('items', []) if isinstance(result, dict) and 'items' in result else result
 
-            #Zeitraum bestimmen
+            # Zeitraum bestimmen
             now = datetime.now(pytz.UTC)
 
-            #Start-Zeit (Standard: jetzt)
+            # Start-Zeit (Standard: jetzt)
             start_filter = now
             if from_date:
-                #_parse_time gibt (start_dt, end_dt) Tuple zurück
+                # _parse_time gibt (start_dt, end_dt) Tuple zurück
                 parsed_from, _ = self._parse_time(from_date)
-                start_filter = parsed_from  #Ist bereits ein datetime Objekt
+                start_filter = parsed_from  # Ist bereits ein datetime Objekt
 
-            #End-Zeit bestimmen
+            # End-Zeit bestimmen
             end_filter = None
             if days_ahead:
                 end_filter = now + timedelta(days=days_ahead)
             elif to_date:
-                #_parse_time gibt (start_dt, end_dt) Tuple zurück
+                # _parse_time gibt (start_dt, end_dt) Tuple zurück
                 parsed_to, _ = self._parse_time(to_date)
-                end_filter = parsed_to  #Ist bereits ein datetime Objekt
+                end_filter = parsed_to  # Ist bereits ein datetime Objekt
 
-                #Wenn end_filter VOR start_filter liegt, muss es im nächsten Jahr sein
-                #z.B. "28. November bis 3. März" -> März muss 2026 sein, nicht 2025
+                # Wenn end_filter VOR start_filter liegt, muss es im nächsten Jahr sein
+                # z.B. "28. November bis 3. März" -> März muss 2026 sein, nicht 2025
                 if end_filter < start_filter:
                     end_filter = end_filter.replace(year=end_filter.year + 1)
                     logger.info(f"End-Datum korrigiert auf nächstes Jahr: {end_filter}")
 
-            #Events filtern
+            # Events filtern
             filtered_events = []
             for event in events:
                 start_time_str = event.get('scheduled_start_time')
                 if start_time_str:
                     start_time = dateparser.parse(start_time_str)
 
-                    #Muss nach start_filter sein
+                    # Muss nach start_filter sein
                     if start_time < start_filter:
                         continue
 
-                    #Wenn end_filter gesetzt, muss Event davor sein
+                    # Wenn end_filter gesetzt, muss Event davor sein
                     if end_filter and start_time > end_filter:
                         continue
 
-                    #Location-Filter (falls angegeben)
+                    # Location-Filter (falls angegeben)
                     if location:
                         event_location = None
-                        #Location aus entity_metadata holen
+                        # Location aus entity_metadata (nur bei EXTERNAL events)
                         entity_metadata = event.get('entity_metadata')
                         if entity_metadata:
                             event_location = entity_metadata.get('location', '')
 
-                        #Fuzzy-Match: Case-insensitive substring-Suche
+                        # Fuzzy-Match: Case-insensitive substring-Suche
                         if not event_location or location.lower() not in event_location.lower():
-                            continue  #Event überspringen, wenn Location nicht passt
+                            continue  # Event überspringen, wenn Location nicht passt
 
-                    #Event hinzufügen mit zusätzlichen berechneten Feldern
+                    # Event hinzufügen mit zusätzlichen berechneten Feldern
                     event_data = event.copy()
 
-                    #End-Zeit berechnen falls vorhanden
+                    # End-Zeit berechnen falls vorhanden
                     end_time_str = event.get('scheduled_end_time')
                     if end_time_str:
                         end_time = dateparser.parse(end_time_str)
@@ -307,35 +312,55 @@ class DiscordEventHelper:
 
                     filtered_events.append(event_data)
 
-            #Sortieren nach Start-Zeit
+            # Sortieren nach Start-Zeit
             filtered_events.sort(key=lambda e: e.get('scheduled_start_time', ''))
 
-            #Limit anwenden
+            # Limit anwenden
             filtered_events = filtered_events[:limit]
 
-            #Cache aktualisieren
+            # Cache aktualisieren
             self.events_cache = filtered_events
 
             logger.info(f"[OK] {len(filtered_events)} Events gefunden")
 
-            #Events für Response vorbereiten
-            events_list = [
-                {
+            # Events vorbereiten - UTC nach Berlin konvertieren
+            berlin_tz = pytz.timezone('Europe/Berlin')
+            events_list = []
+            for e in filtered_events:
+                # Start UTC -> Berlin
+                start_str = e.get('scheduled_start_time')
+                start_berlin = None
+                if start_str:
+                    try:
+                        utc_time = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
+                        start_berlin = utc_time.astimezone(berlin_tz).strftime('%Y-%m-%d %H:%M')
+                    except Exception:
+                        start_berlin = start_str
+
+                # End UTC -> Berlin
+                end_str = e.get('scheduled_end_time')
+                end_berlin = None
+                if end_str:
+                    try:
+                        utc_time = datetime.fromisoformat(end_str.replace('Z', '+00:00'))
+                        end_berlin = utc_time.astimezone(berlin_tz).strftime('%Y-%m-%d %H:%M')
+                    except Exception:
+                        end_berlin = end_str
+
+                events_list.append({
                     "id": e.get('id'),
                     "name": e.get('name'),
                     "description": e.get('description'),
-                    "start_time": e.get('scheduled_start_time'),
-                    "end_time": e.get('scheduled_end_time'),
+                    "start_time": start_berlin,
+                    "end_time": end_berlin,
                     "duration_minutes": e.get('duration_minutes'),
                     "creator_id": e.get('creator_id'),
                     "status": e.get('status'),
                     "entity_type": e.get('entity_type'),
                     "location": e.get('entity_metadata', {}).get('location') if e.get('entity_metadata') else None
-                }
-                for e in filtered_events
-            ]
+                })
 
-            #Basis-Response
+            # Basis-Response
             response = {
                 "success": True,
                 "count": len(filtered_events),
@@ -349,7 +374,7 @@ class DiscordEventHelper:
                 "events": events_list
             }
 
-            #Falls group_by_days---- Gruppierung nach Tagen hinzufügen
+            # Falls group_by_days: Gruppierung nach Tagen hinzufügen
             if group_by_days:
                 events_by_day = {}
                 berlin_tz = pytz.timezone('Europe/Berlin')
@@ -357,15 +382,15 @@ class DiscordEventHelper:
                 for event in events_list:
                     start_time_str = event.get('start_time')
                     if start_time_str:
-                        #In Berlin-Zeit konvertieren
+                        # In Berlin-Zeit konvertieren
                         utc_time = datetime.fromisoformat(start_time_str.replace('Z', '+00:00'))
                         berlin_time = utc_time.astimezone(berlin_tz)
 
-                        #Tag
+                        # Tag als Schlüssel
                         day_key = berlin_time.strftime('%Y-%m-%d')
                         weekday = berlin_time.strftime('%A')
 
-                        #Deutsche Wochentage
+                        # Deutsche Wochentage
                         weekday_de = {
                             'Monday': 'Montag', 'Tuesday': 'Dienstag',
                             'Wednesday': 'Mittwoch', 'Thursday': 'Donnerstag',
@@ -380,7 +405,7 @@ class DiscordEventHelper:
                                 'events': []
                             }
 
-                        #Event-Details mit Berlin-Zeit
+                        # Event-Details mit Berlin-Zeit
                         event_info = event.copy()
                         event_info['start_time_berlin'] = berlin_time.strftime('%H:%M')
 
@@ -391,10 +416,10 @@ class DiscordEventHelper:
 
                         events_by_day[day_key]['events'].append(event_info)
 
-                #Nach Datum sortieren
+                # Nach Datum sortieren
                 sorted_days = sorted(events_by_day.values(), key=lambda d: d['date'])
 
-                #Gruppierte Daten zur Response hinzufügen
+                # Gruppierte Daten zur Response hinzufügen
                 response['events_by_day'] = sorted_days
                 response['days_with_events'] = len(sorted_days)
                 response['total_events'] = len(events_list)
@@ -425,29 +450,29 @@ class DiscordEventHelper:
             Events gruppiert nach Tagen
         """
         try:
-            #Parse from_date und setze auf Tagesbeginn (00:00)
+            # Parse from_date und setze auf Tagesbeginn (00:00)
             from_dt, _ = self._parse_time(from_date)
 
-            #Konvertiere UTC zu Berlin Zeit, um korrekten Tag zu bekommen
+            # Konvertiere UTC zu Berlin Zeit, um korrekten Tag zu bekommen
             from_dt_berlin = from_dt.astimezone(self.timezone)
 
-            #Setze auf Tagesbeginn
+            # Auf Tagesbeginn setzen (00:00 Berlin)
             from_dt_start_berlin = from_dt_berlin.replace(hour=0, minute=0, second=0, microsecond=0)
 
-            #End-Zeit: Nächster Tag 00:00 in Berlin Zeit (
+            # End-Zeit: naechster Tag 00:00 (ganzer Tag: 00:00-23:59)
             to_dt_end_berlin = from_dt_start_berlin + timedelta(days=1)
 
-            #Zurück zu UTC konvertieren für API-Call
+            # Zurück zu UTC konvertieren für API-Call
             from_dt_start = from_dt_start_berlin.astimezone(pytz.UTC)
             to_dt_end = to_dt_end_berlin.astimezone(pytz.UTC)
 
-            #Konvertiere zu Strings für list_upcoming_events
+            # Konvertiere zu Strings für list_upcoming_events
             from_date_str = from_dt_start.strftime("%Y-%m-%d %H:%M")
             to_date_str = to_dt_end.strftime("%Y-%m-%d %H:%M")
 
             logger.info(f"list_events_on_specific_day: {from_date} -> {from_dt_start_berlin.date()} (ganzer Tag)")
 
-            #Rufe list_upcoming_events mit group_by_days=True auf
+            # Rufe list_upcoming_events mit group_by_days=True auf
             return await self.list_upcoming_events(
                 limit=limit,
                 from_date=from_date_str,
@@ -484,10 +509,10 @@ class DiscordEventHelper:
             limit=limit,
             timeframe=timeframe,
             location=location,
-            group_by_days=True  #Aktiviert Tag-Gruppierung
+            group_by_days=True  # Aktiviert Tag-Gruppierung
         )
 
-    async def delete_event_by_name(self, event_name: str) -> Dict[str, Any]:
+    async def delete_event_by_name(self, event_name: str, triggered_by: Optional[str] = None) -> Dict[str, Any]:
         """
         Löscht ein Event anhand des Namens (einfache Hilfsfunktion)
 
@@ -500,16 +525,16 @@ class DiscordEventHelper:
         try:
             logger.info(f"Lösche Event mit Namen: {event_name}")
 
-            #Event ID automatisch finden
+            # Event ID automatisch finden
             event_id = await self._find_event_by_name(event_name)
 
-            #Event löschen
+            # Event löschen
             endpoint = f"/guilds/{self.guild_id}/scheduled-events/{event_id}"
             await self.mcp_client.call_discord_api("DELETE", endpoint)
 
             logger.info(f"[OK] Event '{event_name}' erfolgreich gelöscht (ID: {event_id})")
 
-            #Cache aktualisieren
+            # Cache aktualisieren
             self.events_cache = [e for e in self.events_cache if e.get('id') != event_id]
 
             return {
@@ -527,7 +552,7 @@ class DiscordEventHelper:
                 "error": str(e)
             }
 
-    async def update_event(self, event_id: str, updates: Dict[str, Any]) -> Dict[str, Any]:
+    async def update_event(self, event_id: str, updates: Dict[str, Any], triggered_by: Optional[str] = None) -> Dict[str, Any]:
         """
         Aktualisiert ein Event
 
@@ -541,7 +566,7 @@ class DiscordEventHelper:
         try:
             logger.info(f"Aktualisiere Event: {event_id}")
 
-            #Zeit-Felder parsen falls vorhanden
+            # Zeit-Felder parsen falls vorhanden
             if 'start_time' in updates:
                 start_dt, _ = self._parse_time(updates['start_time'])
                 updates['scheduled_start_time'] = start_dt.strftime('%Y-%m-%dT%H:%M:%S')
@@ -566,7 +591,8 @@ class DiscordEventHelper:
         self,
         channel_id: str,
         content: str,
-        mentions: Optional[List[str]] = None
+        mentions: Optional[List[str]] = None,
+        triggered_by: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Sendet eine Nachricht in einen Channel
@@ -580,25 +606,38 @@ class DiscordEventHelper:
             Gesendete Nachricht
         """
         try:
-            #Channel ID auflösen falls Name gegeben
+            # Channel ID auflösen falls Name gegeben
             if not channel_id.isdigit():
                 channel_id = await self._find_channel_by_name(channel_id)
 
             logger.info(f"Sende Nachricht in Channel: {channel_id}")
 
-            #Nachricht normalisieren und korrigieren
+            # Nachricht normalisieren und korrigieren
             content = await self._normalize_and_correct_text(content)
 
-            #Mentions hinzufügen
+            # Mentions hinzufügen
             if mentions:
                 mention_str = " ".join([f"<@{uid}>" for uid in mentions])
                 content = f"{mention_str} {content}"
 
             endpoint = f"/channels/{channel_id}/messages"
+            message_data = {"content": content}
+
+            # Bei Remote-User: als Embed mit Footer senden
+            if triggered_by and triggered_by != "Anonym":
+                message_data = {
+                    "content": "",
+                    "embeds": [{
+                        "description": content,
+                        "footer": {"text": f"Gesendet von: {triggered_by}"},
+                        "color": 5793266
+                    }]
+                }
+
             result = await self.mcp_client.call_discord_api(
                 "POST",
                 endpoint,
-                {"content": content}
+                message_data
             )
 
             logger.info(f"[OK] Nachricht gesendet: {result.get('id')}")
@@ -628,7 +667,7 @@ class DiscordEventHelper:
                     "name": result.get('name'),
                     "description": result.get('description'),
                     "member_count": result.get('approximate_member_count'),
-                    "created_at": result.get('id')  #Snowflake enthält Timestamp
+                    "created_at": result.get('id')  # Snowflake enthält Timestamp
                 }
             }
 
@@ -651,7 +690,7 @@ class DiscordEventHelper:
 
             channels = list(self.channels_cache.values())
 
-            #Filtern nach Type
+            # Filtern nach Type
             if channel_type == "text":
                 channels = [c for c in channels if c.get('type') == 0]
             elif channel_type == "voice":
@@ -684,7 +723,7 @@ class DiscordEventHelper:
         try:
             logger.info("Lade Online-Member-Anzahl...")
 
-            #Verwende Guild-Info mit Counts 
+            # Guild-Info mit Counts (braucht keine privileged intents)
             endpoint = f"/guilds/{self.guild_id}?with_counts=true"
             guild_info = await self.mcp_client.call_discord_api("GET", endpoint)
 
@@ -723,7 +762,7 @@ class DiscordEventHelper:
         try:
             logger.info(f"Lade Member-Liste und Online-Anzahl (limit: {limit})...")
 
-            #Hole erst die Guild-Info mit Online-Anzahl
+            # Hole erst die Guild-Info mit Online-Anzahl
             endpoint_guild = f"/guilds/{self.guild_id}?with_counts=true"
             guild_info = await self.mcp_client.call_discord_api("GET", endpoint_guild)
 
@@ -732,21 +771,21 @@ class DiscordEventHelper:
 
             logger.info(f"Server: ~{presence_count} online von ~{member_count} Mitgliedern")
 
-            #Versuche Members zu laden
+            # Versuche Members zu laden
             endpoint = f"/guilds/{self.guild_id}/members?limit=1000"
             try:
                 members = await self.mcp_client.call_discord_api("GET", endpoint)
 
-                #Handle wrapped list format
+                # Handle wrapped list format
                 if isinstance(members, dict) and 'items' in members:
                     members = members.get('items', [])
 
-                #Filtere Bots raus und formatiere
+                # Filtere Bots raus und formatiere
                 all_members = []
                 for member in members:
                     user = member.get('user', {})
 
-                    #Bots überspringen
+                    # Bots überspringen
                     if user.get('bot', False):
                         continue
 
@@ -754,7 +793,7 @@ class DiscordEventHelper:
                     global_name = user.get('global_name') or username
                     discriminator = user.get('discriminator', '0')
 
-                    #Display-Name aus Member-Daten
+                    # Display-Name aus Member-Daten
                     display_name = member.get('nick') or global_name
 
                     all_members.append({
@@ -764,12 +803,12 @@ class DiscordEventHelper:
                         "discriminator": discriminator if discriminator != '0' else None
                     })
 
-                #Limitiere Ausgabe
+                # Limitiere Ausgabe
                 limited_members = all_members[:limit]
 
                 logger.info(f"Member-Liste: {len(all_members)} Mitglieder geladen (zeige {len(limited_members)})")
 
-                #Wenn nur wenige Members geladen werden konnten 
+                # Wenig Members -> warscheinlich fehlender Intent
                 if len(all_members) < 3 and member_count > 3:
                     return {
                         "success": True,
@@ -790,7 +829,7 @@ class DiscordEventHelper:
                 }
 
             except Exception as member_error:
-                #Wenn Member-Liste nicht verfügbar ist (403 Forbidden)
+                # Wenn Member-Liste nicht verfügbar ist (403 Forbidden)
                 logger.warning(f"Kann Member-Liste nicht laden: {member_error}")
 
                 return {
@@ -810,7 +849,8 @@ class DiscordEventHelper:
         self,
         channel_id: str,
         message_id: str = None,
-        content: str = None
+        content: str = None,
+        triggered_by: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Löscht eine Nachricht (entweder per ID oder nach Inhalt)
@@ -824,29 +864,30 @@ class DiscordEventHelper:
             Erfolgsmeldung
         """
         try:
-            #Channel ID auflösen falls Name gegeben
+            # Channel ID auflösen falls Name gegeben
             if not channel_id.isdigit():
                 channel_id = await self._find_channel_by_name(channel_id)
 
-            #Wenn content gegeben, suche nach Nachricht
+            # Wenn content gegeben, suche nach Nachricht
             if content and not message_id:
                 logger.info(f"Suche Nachricht mit Inhalt '{content}' in Channel {channel_id}")
 
-                #Lade letzte 100 Nachrichten
+                # Lade letzte 100 Nachrichten
                 endpoint = f"/channels/{channel_id}/messages?limit=100"
                 messages = await self.mcp_client.call_discord_api("GET", endpoint)
 
-                #Handle wrapped list format
+                # Handle wrapped list format
                 if isinstance(messages, dict) and 'items' in messages:
                     messages = messages.get('items', [])
 
-                #Suche nach passender Nachricht
+                # Suche nach passender Nachricht
                 found_message = None
                 for msg in messages:
                     msg_content = msg.get('content', '').lower()
                     search_content = content.lower()
 
-                    #Entferne Interpunktion für flexiblere Suche
+                    # Entferne Interpunktion für flexiblere Suche
+                    # z.B. "hallo wie gehts" findet auch "Hallo, wie geht's?"
                     punctuation = ',.!?;:-"\'()[]'
                     msg_normalized = msg_content
                     search_normalized = search_content
@@ -854,11 +895,11 @@ class DiscordEventHelper:
                         msg_normalized = msg_normalized.replace(p, ' ')
                         search_normalized = search_normalized.replace(p, ' ')
 
-                    #Normalisiere Whitespace
+                    # Whitespace normalisieren
                     msg_normalized = ' '.join(msg_normalized.split())
                     search_normalized = ' '.join(search_normalized.split())
 
-                    #Suche mit normalisiertem Text
+                    # Suche mit normalisiertem Text
                     if search_normalized in msg_normalized:
                         found_message = msg
                         break
@@ -890,7 +931,7 @@ class DiscordEventHelper:
             logger.error(f"Fehler beim Löschen der Nachricht: {e}", exc_info=True)
             raise
 
-    async def delete_last_message(self, channel_id: str) -> Dict[str, Any]:
+    async def delete_last_message(self, channel_id: str, triggered_by: Optional[str] = None) -> Dict[str, Any]:
         """
         Löscht die letzte Nachricht in einem Channel
 
@@ -901,31 +942,31 @@ class DiscordEventHelper:
             Erfolgsmeldung
         """
         try:
-            #Channel ID auflösen falls Name gegeben
+            # Channel ID auflösen falls Name gegeben
             if not channel_id.isdigit():
                 channel_id = await self._find_channel_by_name(channel_id)
 
             logger.info(f"Lösche letzte Nachricht in Channel {channel_id}")
 
-            #Lade letzte Nachricht
+            # Lade letzte Nachricht (limit=1)
             endpoint = f"/channels/{channel_id}/messages?limit=1"
             messages = await self.mcp_client.call_discord_api("GET", endpoint)
 
-            #Handle wrapped list format
+            # Handle wrapped list format
             if isinstance(messages, dict) and 'items' in messages:
                 messages = messages.get('items', [])
 
             if not messages or len(messages) == 0:
                 raise ValueError("Keine Nachrichten im Channel gefunden")
 
-            #Erste Nachricht ist die neueste
+            # Erste Nachricht ist die neueste
             last_message = messages[0]
             message_id = last_message.get('id')
             message_content = last_message.get('content', '(keine Textinhalt)')
 
             logger.info(f"Gefunden: Letzte Nachricht ID {message_id} - '{message_content[:50]}'")
 
-            #Nachricht löschen
+            # Nachricht löschen
             endpoint = f"/channels/{channel_id}/messages/{message_id}"
             await self.mcp_client.call_discord_api("DELETE", endpoint)
 
@@ -958,21 +999,21 @@ class DiscordEventHelper:
             Liste der Nachrichten mit Autor, Inhalt und Zeitstempel
         """
         try:
-            #Channel ID auflösen falls Name gegeben
+            # Channel ID auflösen falls Name gegeben
             original_channel = channel_id
             if not channel_id.isdigit():
                 channel_id = await self._find_channel_by_name(channel_id)
 
-            #Limit begrenzen
+            # Limit begrenzen
             limit = min(max(1, limit), 100)
 
             logger.info(f"Lade letzte {limit} Nachrichten aus Channel {channel_id}")
 
-            #Nachrichten laden
+            # Nachrichten laden
             endpoint = f"/channels/{channel_id}/messages?limit={limit}"
             messages = await self.mcp_client.call_discord_api("GET", endpoint)
 
-            #Handle wrapped list format
+            # Handle wrapped list format
             if isinstance(messages, dict) and 'items' in messages:
                 messages = messages.get('items', [])
 
@@ -985,14 +1026,14 @@ class DiscordEventHelper:
                     "message": f"Keine Nachrichten in #{original_channel} gefunden"
                 }
 
-            #Nachrichten formatieren
+            # Nachrichten formatieren
             formatted_messages = []
             for msg in messages:
-                #Autor extrahieren
+                # Autor extrahieren
                 author = msg.get('author', {})
                 author_name = author.get('global_name') or author.get('username', 'Unbekannt')
 
-                #Zeitstempel formatieren
+                # Zeitstempel formatieren
                 timestamp_str = msg.get('timestamp', '')
                 try:
                     utc_time = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
@@ -1001,16 +1042,26 @@ class DiscordEventHelper:
                 except:
                     formatted_time = timestamp_str
 
-                #Inhalt (max 500 Zeichen)
+                # Inhalt (max 500 Zeichen), auch Embeds beruecksichtigen
                 content = msg.get('content', '')
+                if not content:
+                    # Kein Text -> versuche aus Embeds zu extrahiren
+                    embeds = msg.get('embeds', [])
+                    for embed in embeds:
+                        embed_text = embed.get('description', '')
+                        if embed_text:
+                            footer = embed.get('footer', {})
+                            footer_text = footer.get('text', '') if footer else ''
+                            content = f"{embed_text} [{footer_text}]" if footer_text else embed_text
+                            break
                 if len(content) > 500:
                     content = content[:500] + '...'
 
-                #Attachments zählen
+                # Attachments zählen
                 attachments = msg.get('attachments', [])
                 attachment_info = f" [{len(attachments)} Anhang/Anhänge]" if attachments else ""
 
-                # zählen
+                # Embeds zählen
                 embeds = msg.get('embeds', [])
                 embed_info = f" [{len(embeds)} Embed(s)]" if embeds else ""
 
@@ -1054,10 +1105,10 @@ class DiscordEventHelper:
             Zusammenfassung der Unterhaltung
         """
         try:
-            #Limit begrenzen
+            # Limit begrenzen
             limit = min(max(1, limit), 50)
 
-            #Nachrichten laden
+            # Nachrichten laden
             messages_result = await self.get_channel_messages(channel_id, limit)
 
             if not messages_result.get('success') or not messages_result.get('messages'):
@@ -1070,7 +1121,7 @@ class DiscordEventHelper:
             messages = messages_result.get('messages', [])
             channel_name = messages_result.get('channel', channel_id)
 
-            #Nachrichten für LLM formatieren (chronologisch
+            # Fuer LLM formatieren (chronologisch, aelteste zuerst)
             conversation_text = ""
             for msg in reversed(messages):
                 author = msg.get('author', 'Unbekannt')
@@ -1087,7 +1138,7 @@ class DiscordEventHelper:
                     "summary": f"Keine Textnachrichten in #{channel_name} zum Zusammenfassen gefunden."
                 }
 
-            #LLM für Zusammenfassung nutzen
+            # LLM für Zusammenfassung nutzen
             if self.gemini:
                 prompt = f"""Fasse die folgende Discord-Unterhaltung kurz und prägnant auf Deutsch zusammen.
 Nenne die wichtigsten Themen und Punkte. Halte die Zusammenfassung unter 200 Wörtern.
@@ -1108,7 +1159,7 @@ Zusammenfassung:"""
                     "summary": summary
                 }
             else:
-                #Fallback ohne LLM
+                # Fallback ohne LLM
                 return {
                     "success": True,
                     "channel": channel_name,
@@ -1120,7 +1171,7 @@ Zusammenfassung:"""
             logger.error(f"Fehler beim Zusammenfassen des Channels: {e}", exc_info=True)
             raise
 
-    #HELPER-METHODEN
+    # === HELPER-METHODEN ===
 
     async def _normalize_and_correct_text(self, text: str) -> str:
         """
@@ -1135,12 +1186,12 @@ Zusammenfassung:"""
         if not text or len(text.strip()) == 0:
             return text
 
-        #Ersten Buchstaben großschreiben
+        # Ersten Buchstaben großschreiben
         text = text.strip()
         if len(text) > 0:
             text = text[0].upper() + text[1:]
 
-        #Rechtschreibprüfung
+        # Rechtschreibung pruefen wenn LLM da ist
         if self.gemini:
             try:
                 spelling_result = await self.gemini.check_spelling(text)
@@ -1161,11 +1212,12 @@ Zusammenfassung:"""
             endpoint = f"/guilds/{self.guild_id}/channels"
             result = await self.mcp_client.call_discord_api("GET", endpoint)
 
+            # FastMCP List-Wrapping
             channels = result.get('items', []) if isinstance(result, dict) and 'items' in result else result
 
             self.channels_cache = {c['id']: c for c in channels}
 
-            #Debug---- Liste der Text-Channels loggen
+            # Debug: Liste der Text-Channels loggen
             text_channels = [c['name'] for c in channels if c.get('type') == 0]
             voice_channels = [c['name'] for c in channels if c.get('type') == 2]
             all_channels = [(c['name'], c.get('type')) for c in channels]
@@ -1181,9 +1233,9 @@ Zusammenfassung:"""
 
     def _normalize_channel_name(self, name: str) -> str:
         """Normalisiert Channel-Namen für Vergleiche (entfernt Sonderzeichen, lowercase)"""
-        #Lowercase, Leerzeichen/Bindestriche/Unterstriche entfernen
+        # Lowercase, Leerzeichen/Bindestriche/Unterstriche entfernen
         normalized = name.lower()
-        normalized = re.sub(r'[\s\-_]+', '', normalized)  #Entferne Leerzeichen, Bindestriche, Unterstriche
+        normalized = re.sub(r'[\s\-_]+', '', normalized)  # Entferne Leerzeichen, Bindestriche, Unterstriche
         return normalized
 
     async def _find_channel_by_name(self, name: str) -> str:
@@ -1191,24 +1243,24 @@ Zusammenfassung:"""
         name_lower = name.lower()
         name_normalized = self._normalize_channel_name(name)
 
-        #Exakte Suche (case-insensitive)
+        # Exakte Suche (case-insensitive)
         for channel in self.channels_cache.values():
             if channel.get('name', '').lower() == name_lower:
                 return channel['id']
 
-        #Normalisierte Suche (ignoriert Leerzeichen, Bindestriche, etc.)
+        # Normalisierte Suche (ignoriert Leerzeichen, Bindestriche, etc.)
         for channel in self.channels_cache.values():
             channel_normalized = self._normalize_channel_name(channel.get('name', ''))
             if channel_normalized == name_normalized:
                 logger.info(f"Channel via Normalisierung gefunden: '{channel['name']}' für '{name}'")
                 return channel['id']
 
-        #Fuzzy-Matching---- Teilstring-Suche (auch normalisiert)
+        # Fuzzy-Matching: Teilstring-Suche (auch normalisiert)
         matches = []
         for channel in self.channels_cache.values():
             channel_name = channel.get('name', '').lower()
             channel_normalized = self._normalize_channel_name(channel.get('name', ''))
-            #Prüfe sowohl original als auch normalisiert
+            # Prüfe sowohl original als auch normalisiert
             if (name_lower in channel_name or channel_name in name_lower or
                 name_normalized in channel_normalized or channel_normalized in name_normalized):
                 matches.append(channel)
@@ -1220,39 +1272,39 @@ Zusammenfassung:"""
             match_names = [c['name'] for c in matches]
             raise ValueError(f"Mehrere Channels gefunden für '{name}': {', '.join(match_names)}")
 
-        #Kein Match
+        # Kein Match: Verfügbare Channels auflisten
         available = [c.get('name', 'unknown') for c in self.channels_cache.values() if c.get('type') == 0]
         raise ValueError(f"Channel nicht gefunden: '{name}'. Verfügbare Text-Channels: {', '.join(available)}")
 
     async def _find_voice_channel(self) -> Optional[str]:
         """Findet ersten Voice Channel"""
         for channel in self.channels_cache.values():
-            if channel.get('type') == 2:  #Voice Channel
+            if channel.get('type') == 2:  # Voice Channel
                 return channel['id']
         return None
 
     async def _find_event_by_name(self, name: str) -> Optional[str]:
         """Findet Event ID by Name (case-insensitive, auch Teilstring-Match)"""
-        #Cache updaten
+        # Cache updaten
         await self.list_upcoming_events(limit=100)
 
         name_lower = name.lower().strip()
 
-        #Erst exakte Übereinstimmung versuchen
+        # Erst exakte Übereinstimmung versuchen
         for event in self.events_cache:
             event_name = event.get('name', '').lower().strip()
             if event_name == name_lower:
                 logger.info(f"Event gefunden (exakt): {event.get('name')} -> {event['id']}")
                 return event['id']
 
-        #Dann Teilstring-Match versuchen
+        # Dann Teilstring-Match versuchen
         for event in self.events_cache:
             event_name = event.get('name', '').lower().strip()
             if name_lower in event_name or event_name in name_lower:
                 logger.info(f"Event gefunden (Teilstring): {event.get('name')} -> {event['id']}")
                 return event['id']
 
-        #Liste verfügbare Events für bessere Fehlermeldung
+        # Liste verfügbare Events für bessere Fehlermeldung
         available_events = [e.get('name', 'Unbenannt') for e in self.events_cache]
         logger.error(f"Event '{name}' nicht gefunden. Verfügbare Events: {available_events}")
         raise ValueError(f"Event '{name}' nicht gefunden. Verfügbare Events: {', '.join(available_events)}")
@@ -1271,10 +1323,10 @@ Zusammenfassung:"""
         try:
             now = datetime.now(self.timezone)
 
-            #Relative Zeitangaben behandeln
+            # Relative Zeitangaben behandeln
             time_lower = time_str.lower().strip()
 
-            #"heute" / "today"
+            # "heute" / "today"
             if 'heute' in time_lower or 'today' in time_lower:
                 base_date = now
                 time_part = re.search(r'(\d{1,2}):?(\d{2})?', time_lower)
@@ -1285,7 +1337,7 @@ Zusammenfassung:"""
                 else:
                     start_dt = base_date.replace(hour=15, minute=0, second=0, microsecond=0)
 
-            #"übermorgen" (MUSS vor "morgen" geprüft werden!!!!
+            # "übermorgen" (MUSS vor "morgen" geprüft werden!)
             elif 'übermorgen' in time_lower:
                 base_date = now + timedelta(days=2)
                 time_part = re.search(r'(\d{1,2}):?(\d{2})?', time_lower)
@@ -1296,7 +1348,7 @@ Zusammenfassung:"""
                 else:
                     start_dt = base_date.replace(hour=15, minute=0, second=0, microsecond=0)
 
-            #"morgen" / "tomorrow" (MUSS nach "übermorgen" geprüft werden!)
+            # "morgen" / "tomorrow" (MUSS nach "übermorgen" geprüft werden!)
             elif 'morgen' in time_lower or 'tomorrow' in time_lower:
                 base_date = now + timedelta(days=1)
                 time_part = re.search(r'(\d{1,2}):?(\d{2})?', time_lower)
@@ -1307,19 +1359,20 @@ Zusammenfassung:"""
                 else:
                     start_dt = base_date.replace(hour=15, minute=0, second=0, microsecond=0)
 
-            #"in X Stunden/Tagen" (Deutsch und Englisch)
+            # "in X Stunden/Tagen" (Deutsch und Englisch)
+            # Auch: "X days from now", "X hours from now" etc.
             elif 'in' in time_lower or 'from now' in time_lower:
-                #Versuche "in X days/hours/minutes"
+                # Versuche "in X days/hours/minutes"
                 match = re.search(r'in (\d+) (stunden?|tagen?|minuten?|hours?|days?|minutes?)', time_lower)
                 if not match:
-                    #Versuche "X days/hours/minutes from now"
+                    # Versuche "X days/hours/minutes from now"
                     match = re.search(r'(\d+) (stunden?|tagen?|minuten?|hours?|days?|minutes?) from now', time_lower)
 
                 if match:
                     amount = int(match.group(1))
                     unit = match.group(2)
-                    #Deutsch: stunde/stunden, tag/tagen, minute/minuten
-                    #Englisch: hour/hours, day/days, minute/minutes
+                    # Deutsch: stunde/stunden, tag/tagen, minute/minuten
+                    # Englisch: hour/hours, day/days, minute/minutes
                     if unit.startswith('stunde') or unit.startswith('hour'):
                         start_dt = now + timedelta(hours=amount)
                     elif unit.startswith('tag') or unit.startswith('day'):
@@ -1329,9 +1382,9 @@ Zusammenfassung:"""
                 else:
                     raise ValueError(f"Konnte relative Zeit nicht parsen: {time_str}")
 
-            #Wochentage (deutsch und Englisch)
+            # Wochentage (Deutsch und Englisch)
             elif any(day in time_lower for day in ['montag', 'dienstag', 'mittwoch', 'donnerstag', 'freitag', 'samstag', 'sonntag', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']):
-                #Deutsche und englische Wochentage
+                # Deutsche und englische Wochentage
                 days_map = {
                     'montag': 0, 'monday': 0,
                     'dienstag': 1, 'tuesday': 1,
@@ -1348,8 +1401,8 @@ Zusammenfassung:"""
                         if days_ahead <= 0:
                             days_ahead += 7
 
-                        #"übernächsten" / "after next" bedeutet +7 Tage zusätzlich
-                        #"nächsten" / "next" ist bereits im normalen days_ahead enthalten
+                        # "übernächsten" / "after next" bedeutet +7 Tage zusätzlich
+                        # "nächsten" / "next" ist bereits im normalen days_ahead enthalten
                         if 'übernächste' in time_lower or 'übernächsten' in time_lower or 'after_next' in time_lower:
                             days_ahead += 7
 
@@ -1366,7 +1419,7 @@ Zusammenfassung:"""
                         break
 
             else:
-                #Versuche mit dateparser
+                # Versuche mit dateparser
                 start_dt = dateparser.parse(
                     time_str,
                     settings={
@@ -1379,26 +1432,28 @@ Zusammenfassung:"""
                 if not start_dt:
                     raise ValueError(f"Konnte Zeit nicht parsen: {time_str}")
 
-                #Timezone setzen
+                # Timezone setzen
                 if start_dt.tzinfo is None:
                     start_dt = self.timezone.localize(start_dt)
 
-            #Automatische Jahr-Korrektur für Datumsangaben
+            # Automatische Jahr-Korrektur für Datumsangaben
+            # Jahr-Korrektur: z.B. 2024-11-01 -> 2025-11-01
+            # Aber zukuenftige Jahre nicht anfassen!
             is_iso_format = re.match(r'\d{4}-\d{2}-\d{2}', time_str)
 
             if is_iso_format:
-                #Bei ISO-Format: Korrigiere NUR auf aktuelles Jahr wenn das Jahr in der Vergangenheit liegt
-                #z.B. "2024-11-01" am 28.11.2025 -> 2025-11-01
-                #ABER: "2027-04-07" bleibt 2027 (zukünftiges Jahr ist gewollt)
+                # Bei ISO-Format: Korrigiere NUR auf aktuelles Jahr wenn das Jahr in der Vergangenheit liegt
+                # z.B. "2024-11-01" am 28.11.2025 -> 2025-11-01
+                # ABER: "2027-04-07" bleibt 2027 (zukünftiges Jahr ist gewollt)
                 if start_dt.year < now.year:
                     original_year = start_dt.year
                     start_dt = start_dt.replace(year=now.year)
                     logger.info(f"Jahr korrigiert (ISO): {original_year} -> {now.year}")
 
-
+                # Vergangenes Datum ist OK - User fragt evtl nach History
 
             elif start_dt <= now:
-                #Für natürliche Datumsangaben
+                # Natuerliche Datumsangabe - pruefen ob spezifisches Datum
                 is_specific_date = any(month in time_str.lower() for month in [
                     'januar', 'februar', 'märz', 'april', 'mai', 'juni',
                     'juli', 'august', 'september', 'oktober', 'november', 'dezember',
@@ -1407,17 +1462,17 @@ Zusammenfassung:"""
                 ])
 
                 if is_specific_date:
-                    #Nur ein Jahr inkrementieren wenn nötig
+                    # Nur ein Jahr hoch wenn noetig
                     if start_dt.year < now.year:
                         original_year = start_dt.year
                         start_dt = start_dt.replace(year=now.year)
                         logger.info(f"Jahr korrigiert: {original_year} -> {now.year}")
-                #Für vergangene Daten im aktuellen Jahr
+                # Vergangene Daten akzeptiren (User will History sehen)
 
-            #End-Zeit berechnen
+            # End-Zeit berechnen
             end_dt = start_dt + timedelta(hours=duration_hours)
 
-            #Zu UTC konvertieren
+            # Zu UTC konvertieren
             start_utc = start_dt.astimezone(pytz.UTC)
             end_utc = end_dt.astimezone(pytz.UTC)
 

@@ -12,13 +12,13 @@ import os
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 
-#Lokaler Import des llm_client
+# Lokaler Import des llm_client
 from llm_client import LLMClient
 
-#Groq Client für Whisper API
+# Groq Client für Whisper API
 from groq import Groq
 
-#Faster Whisper für lokales Speech-to-Text
+# Faster Whisper für lokales Speech-to-Text
 try:
     from faster_whisper import WhisperModel
     FASTER_WHISPER_AVAILABLE = True
@@ -30,10 +30,10 @@ logger = logging.getLogger(__name__)
 
 
 def _safe_log(text: str, max_len: int = 200) -> str:
-    """Entfernt Emojis und nicht-ASCII-Zeichen für sicheres Logging"""
+    """Entfernt Emojis und nicht-ASCII-Zeichen für sicheres Logging auf Windows"""
     if not text:
         return ""
-    #Entferne alle Zeichen, die nicht in ASCII kodierbar sind (z.B. Emojis)
+    # Entferne alle Zeichen, die nicht in ASCII kodierbar sind (z.B. Emojis)
     safe = text.encode('ascii', errors='ignore').decode('ascii')
     return safe[:max_len] if len(safe) > max_len else safe
 
@@ -47,19 +47,19 @@ class LLMVoiceInterface:
         self.spell_check_client = None
         self.llm_available = False
 
-        #LLM nur initialisieren wenn Provider konfiguriert ist
+        # LLM nur initialisieren wenn Provider konfiguriert ist
         if config.llm_provider and config.llm_available:
             self._init_llm_client(config.llm_provider, config.llm_model)
         else:
             logger.warning("Kein LLM Provider konfiguriert - Chat-Funktion deaktiviert")
             logger.info("Gehe zu Einstellungen um einen API Key einzugeben")
 
-        #Speech-to-Text Provider konfigurieren
+        # Speech-to-Text Provider konfigurieren
         self.speech_provider = config.speech_provider
         self.groq_client = None
         self.faster_whisper_model = None
 
-        #Groq Whisper initialisieren
+        # Groq Whisper initialisieren (wenn benötigt)
         if self.speech_provider in ["groq", "groq-fallback"]:
             if not config.groq_api_key:
                 raise ValueError(
@@ -69,7 +69,7 @@ class LLMVoiceInterface:
             self.groq_client = Groq(api_key=config.groq_api_key)
             logger.info(f"Speech-to-Text: Groq Whisper (whisper-large-v3-turbo)")
 
-        #Faster Whisper initialisieren
+        # Faster Whisper initialisieren (wenn benötigt)
         if self.speech_provider in ["faster-whisper", "groq-fallback"]:
             if not FASTER_WHISPER_AVAILABLE:
                 if self.speech_provider == "faster-whisper":
@@ -81,11 +81,11 @@ class LLMVoiceInterface:
                     logger.warning("faster-whisper nicht verfügbar, Fallback nicht möglich")
             else:
                 try:
-                    #Base Model (74MB) ---- Guter Kompromiss zwischen Geschwindigkeit und Qualität
+                    # Base Model (74MB) ---- Guter Kompromiss zwischen Geschwindigkeit und Qualität
                     self.faster_whisper_model = WhisperModel(
-                        "base",               #Modellgröße: tiny, base, small, medium, large-v3
-                        device="cpu",         #CPU-Modus (für GPU: "cuda")
-                        compute_type="int8"   #Optimiert für CPU
+                        "base",               # Modellgröße: tiny, base, small, medium, large-v3
+                        device="cpu",         # CPU-Modus (für GPU: "cuda")
+                        compute_type="int8"   # Optimiert für CPU
                     )
                     if self.speech_provider == "faster-whisper":
                         logger.info(f"Speech-to-Text: Faster Whisper (base model, CPU)")
@@ -97,22 +97,22 @@ class LLMVoiceInterface:
                     else:
                         logger.warning(f"Faster Whisper Fallback nicht verfügbar: {e}")
 
-        #Log LLM Status
+        # Log LLM Status
         if self.llm_available:
             logger.info(f"LLM Client initialisiert: {config.llm_provider} - {config.llm_model}")
 
     def _init_llm_client(self, provider: str, model: str):
         """Initialisiert LLM Client mit gegebenem Provider und Modell"""
-        #Setze passenden API Key als Umgebungsvariable für llm_client
+        # Setze passenden API Key als Umgebungsvariable für llm_client
         if provider == "openai" and self.config.openai_api_key:
             os.environ['OPENAI_API_KEY'] = self.config.openai_api_key
         elif provider == "groq" and self.config.groq_api_key:
             os.environ['GROQ_API_KEY'] = self.config.groq_api_key
         elif provider == "gemini" and self.config.gemini_api_key:
             os.environ['GEMINI_API_KEY'] = self.config.gemini_api_key
-        #Ollama braucht keinen API Key
+        # Ollama braucht keinen API Key
 
-        #LLM Client initialisieren (flexibel)
+        # LLM Client initialisieren (flexibel)
         self.llm_client = LLMClient(
             api_choice=provider,
             llm=model,
@@ -121,9 +121,10 @@ class LLMVoiceInterface:
         )
 
         #Schneller LLM Client für Rechtschreibprüfung (optimiert für Geschwindigkeit)
+        # Nutzt schnelleres Modell wenn verfügbar
         spell_check_model = model
         if provider == "gemini":
-            #Nutze Flash statt Pro für schnellere Rechtschreibprüfung
+            # Nutze Flash statt Pro für schnellere Rechtschreibprüfung
             spell_check_model = "gemini-2.5-flash" if "pro" in model.lower() else model
         elif provider == "openai":
             spell_check_model = "gpt-4o-mini" if "gpt-4o" in model else model
@@ -131,8 +132,8 @@ class LLMVoiceInterface:
         self.spell_check_client = LLMClient(
             api_choice=provider,
             llm=spell_check_model,
-            temperature=0.3,  #Niedrigere Temperatur für konsistente Korrektur
-            max_tokens=4096   #Erhöht für längere Texte
+            temperature=0.3,  # Niedrigere Temperatur für konsistente Korrektur
+            max_tokens=4096   # Erhöht für längere Texte
         )
 
         self.llm_available = True
@@ -150,21 +151,21 @@ class LLMVoiceInterface:
             Transkribierter Text
         """
         try:
-            #Prüfe ob Datei existiert
+            # Prüfe ob Datei existiert
             if not Path(audio_file_path).exists():
                 raise FileNotFoundError(f"Audio-Datei nicht gefunden: {audio_file_path}")
 
-            #Provider-basierte Speech-to-Text
+            # Provider-basierte Speech-to-Text
             if self.speech_provider == "groq":
-                #Nur Groq
+                # Nur Groq
                 return await self._speech_to_text_groq(audio_file_path)
 
             elif self.speech_provider == "faster-whisper":
-                #Nur Faster Whisper
+                # Nur Faster Whisper
                 return await self._speech_to_text_faster_whisper(audio_file_path)
 
             elif self.speech_provider == "groq-fallback":
-                #Groq mit Faster Whisper Fallback
+                # Groq mit Faster Whisper Fallback
                 try:
                     return await self._speech_to_text_groq(audio_file_path)
                 except Exception as groq_error:
@@ -190,16 +191,16 @@ class LLMVoiceInterface:
         """
         logger.info(f"Konvertiere Audio zu Text (Groq Whisper): {audio_file_path}")
 
-        #Audio-Datei öffnen und an Groq Whisper senden
+        # Audio-Datei öffnen und an Groq Whisper senden
         with open(audio_file_path, "rb") as audio_file:
             transcription = self.groq_client.audio.transcriptions.create(
                 file=(Path(audio_file_path).name, audio_file.read()),
-                model="whisper-large-v3-turbo",  #Schnellstes und günstigstes Modell
-                language="de",  #Deutsch
+                model="whisper-large-v3-turbo",  # Schnellstes und günstigstes Modell
+                language="de",  # Deutsch
                 response_format="text"
             )
 
-        #Groq gibt direkt den Text zurück
+        # Groq gibt direkt den Text zurück
         text = transcription.strip()
         logger.info(f"Transkription (Groq): {text}")
         return text
@@ -216,14 +217,14 @@ class LLMVoiceInterface:
         """
         logger.info(f"Konvertiere Audio zu Text (Faster Whisper): {audio_file_path}")
 
-        #Transkribieren
+        # Transkribieren
         segments, info = self.faster_whisper_model.transcribe(
             audio_file_path,
             language="de",
-            beam_size=5
+            beam_size=5  # Qualität vs. Geschwindigkeit (1-10)
         )
 
-        #Segmente zu Text kombinieren
+        # Segmente zu Text kombinieren
         text = " ".join([segment.text for segment in segments]).strip()
         logger.info(f"Transkription (Faster Whisper): {text}")
         return text
@@ -249,13 +250,13 @@ class LLMVoiceInterface:
         try:
             logger.info(f"Verarbeite mit Context: {user_input[:50]}...")
 
-            #Messages für llm_client erstellen
+            # Messages für llm_client erstellen
             messages = [
                 {"role": "system", "content": context},
                 {"role": "user", "content": user_input}
             ]
 
-            #LLM anfragen
+            # LLM anfragen (synchron)
             result = self.llm_client.chat_completion(messages)
 
             logger.info(f"LLM Context-Antwort: {_safe_log(result, 200)}...")
@@ -263,7 +264,7 @@ class LLMVoiceInterface:
 
         except Exception as e:
             logger.error(f"Fehler bei Context-Verarbeitung: {e}", exc_info=True)
-            #Fallback: Einfache Antwort
+            # Fallback: Einfache Antwort
             return json.dumps({
                 "message": f"Fehler bei der Verarbeitung: {str(e)}",
                 "actions": []
@@ -288,7 +289,7 @@ class LLMVoiceInterface:
                     "errors": []
                 }
 
-            #Sehr kurze Texte überspringen (< 10 Zeichen)
+            # Sehr kurze Texte überspringen (< 10 Zeichen)
             if len(text.strip()) < 10:
                 return {
                     "has_errors": False,
@@ -299,7 +300,7 @@ class LLMVoiceInterface:
 
             logger.info(f"Prüfe Text (Rechtschreibung & Interpunktion): {text[:50]}...")
 
-            #Sehr kompakter Prompt - nur korrigierten Text zurückgeben
+            # Sehr kompakter Prompt - nur korrigierten Text zurückgeben
             prompt = f"""Korrigiere deutschen Text: Rechtschreibung, Kommata, Satzzeichen. Jeder Satz endet mit Punkt/Fragezeichen/Ausrufezeichen.
 
 Gib NUR den korrigierten Text zurück als JSON:
@@ -309,10 +310,10 @@ Text: {text}"""
 
             messages = [{"role": "user", "content": prompt}]
 
-            #Schnelleren LLM Client für Rechtschreibprüfung nutzen
+            # Schnelleren LLM Client für Rechtschreibprüfung nutzen
             result = self.spell_check_client.chat_completion(messages)
 
-            #Prüfe ob Result None ist
+            # Prüfe ob Result None ist (API-Fehler)
             if result is None or not result:
                 logger.warning("LLM gab keine Antwort zurück, überspringe Rechtschreibprüfung")
                 return {
@@ -322,19 +323,19 @@ Text: {text}"""
                     "errors": []
                 }
 
-            #JSON extrahieren
+            # JSON extrahieren (falls LLM zusätzlichen Text zurückgibt)
             result = result.strip()
             if result.startswith("```json"):
                 result = result.replace("```json", "").replace("```", "").strip()
             elif result.startswith("```"):
                 result = result.replace("```", "").strip()
 
-            #JSON parsen
+            # JSON parsen
             try:
                 parsed = json.loads(result)
                 corrected = parsed.get('corrected', text)
 
-                #Prüfe ob es Änderungen gab
+                # Prüfe ob es Änderungen gab
                 has_errors = (corrected != text)
 
                 logger.info(f"Rechtschreibung geprüft: {'Änderungen vorgenommen' if has_errors else 'Keine Fehler'}")
@@ -343,10 +344,10 @@ Text: {text}"""
                     "has_errors": has_errors,
                     "original": text,
                     "corrected": corrected,
-                    "errors": []  #Nicht mehr benötigt, aber für Kompatibilität
+                    "errors": []  # Nicht mehr benötigt, aber für Kompatibilität
                 }
             except json.JSONDecodeError:
-                #Fallback bei Parse-Fehler
+                # Fallback bei Parse-Fehler
                 logger.warning(f"Konnte JSON nicht parsen: {result[:100]}")
                 return {
                     "has_errors": False,
@@ -357,7 +358,7 @@ Text: {text}"""
 
         except Exception as e:
             logger.error(f"Fehler bei Rechtschreibprüfung: {e}", exc_info=True)
-            #Bei Fehler: Original-Text zurückgeben
+            # Bei Fehler: Original-Text zurückgeben
             return {
                 "has_errors": False,
                 "original": text,
@@ -380,14 +381,14 @@ Text: {text}"""
 
             messages = [{"role": "user", "content": prompt}]
 
-            #Haupt-LLM Client für Zusammenfassung nutzen
+            # Haupt-LLM Client für Zusammenfassung nutzen
             result = self.llm_client.chat_completion(messages)
 
             if result is None or not result:
                 logger.warning("LLM gab keine Antwort zurück")
                 return "Konnte keine Zusammenfassung erstellen."
 
-            #Bereinige Ergebnis
+            # Bereinige Ergebnis
             result = result.strip()
 
             logger.info(f"Zusammenfassung erstellt: {result[:100]}...")
@@ -399,5 +400,5 @@ Text: {text}"""
             return f"Fehler bei der Zusammenfassung: {str(e)}"
 
 
-#Backwards-Compatibility Alias
+# Backwards-Compatibility Alias
 GeminiVoiceInterface = LLMVoiceInterface

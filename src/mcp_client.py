@@ -30,10 +30,11 @@ class DiscordMCPClient:
         try:
             logger.info("Verbinde mit MCP Discord Server...")
 
-            #Server als subprocess starten
+            # OPTION 1: Server als subprocess starten (empfohlen für Entwicklung)
             if self.config.mcp_mode == "subprocess":
                 await self._start_server_subprocess()
 
+            # OPTION 2: Zu laufendem Server verbinden (für Produktion)
             elif self.config.mcp_mode == "remote":
                 await self._connect_to_remote_server()
 
@@ -53,11 +54,11 @@ class DiscordMCPClient:
             from fastmcp import FastMCP
             from fastmcp.client import Client
 
-            #Server-Konfiguration für discord-raw
-            #Eigene Implementierung inspiriert durch das Raw-API-Konzept von hanweg/mcp-discord-raw
+            # Server-Konfiguration für discord-raw
+            # Eigene Implementierung inspiriert durch das Raw-API-Konzept von hanweg/mcp-discord-raw
             mcp = FastMCP("Discord Raw API Server")
 
-            #Discord API Tool registrieren
+            # Discord API Tool registrieren
             @mcp.tool()
             async def discord_api(
                 method: str,
@@ -122,7 +123,7 @@ class DiscordMCPClient:
                         else:
                             raise ValueError(f"Unsupported HTTP method: {method}")
 
-                        #FastMCP Fix: Wrappen von Listen
+                        # FastMCP Fix: Wrappen von Listen
                         if isinstance(result, list):
                             return {"items": result, "count": len(result)}
                         return result
@@ -136,7 +137,7 @@ class DiscordMCPClient:
                         logger.error(f"Unexpected error: {e}", exc_info=True)
                         raise
 
-            #Client erstellen und verbinden
+            # Client erstellen und verbinden
             self.client = Client(mcp)
             await self.client.__aenter__()
 
@@ -147,8 +148,36 @@ class DiscordMCPClient:
             raise
 
     async def _connect_to_remote_server(self):
-        logger.info("Verwende stattdessen subprocess mode")
-        await self._start_server_subprocess()
+        """Remote-Verbindung zum MCP Server (SSE/HTTP)."""
+        try:
+            from fastmcp.client import Client
+
+            server_url = self.config.mcp_server_url
+            if not server_url:
+                raise ValueError(
+                    "MCP_SERVER_URL nicht gesetzt fuer remote mode. "
+                    "Bitte MCP_SERVER_URL in .env setzen (z.B. http://localhost:8000/sse)"
+                )
+
+            logger.info(f"Verbinde mit remote MCP Server: {server_url}")
+
+            # Bearer Token fuer Auth
+            api_key = getattr(self.config, "mcp_api_key", None)
+            if api_key:
+                logger.info("Bearer Token fuer Auth konfiguriert")
+
+            # FastMCP erkennt Transport automatisch anhand der URL
+            self.client = Client(server_url, auth=api_key)
+            await self.client.__aenter__()
+
+            # Verbindung testen
+            tools = await self.client.list_tools()
+            tool_names = [t.name for t in tools]
+            logger.info(f"Remote MCP Server verbunden - {len(tools)} Tools: {tool_names}")
+
+        except Exception as e:
+            logger.error(f"Fehler beim Verbinden zum Remote-Server: {e}", exc_info=True)
+            raise
 
     async def list_tools(self) -> List[Dict[str, Any]]:
         """Listet alle verfügbaren MCP Tools auf"""
@@ -187,7 +216,7 @@ class DiscordMCPClient:
 
             logger.info(f"Calling discord_api: {method} {endpoint}")
 
-            #MCP Tool aufrufen
+            # MCP Tool aufrufen
             result = await self.client.call_tool(
                 "discord_api",
                 arguments={
@@ -197,14 +226,14 @@ class DiscordMCPClient:
                 }
             )
 
-            #Result extrahieren
+            # Result extrahieren
             if hasattr(result, 'content') and result.content:
-                #FastMCP gibt Content als Liste zurück
+                # FastMCP gibt Content als Liste zurück
                 content = result.content[0]
                 if hasattr(content, 'text'):
-                    #Text zu JSON parsen
+                    # Text zu JSON parsen
                     parsed = json.loads(content.text)
-                    #Wenn Discord eine Liste zurückgibt, wrappen wir sie
+                    # Wenn Discord eine Liste zurückgibt, wrappen wir sie
                     if isinstance(parsed, list):
                         return {"items": parsed, "count": len(parsed)}
                     return parsed
@@ -252,19 +281,19 @@ class DiscordMCPClient:
             "name": name,
             "description": description,
             "scheduled_start_time": start_time,
-            "privacy_level": 2,  #GUILD_ONLY
+            "privacy_level": 2,  # GUILD_ONLY
             "entity_type": entity_type
         }
 
-        #End time für alle Event-Types
+        # End time für alle Event-Types
         event_data["scheduled_end_time"] = end_time
 
-        #Type-spezifische Felder
-        if entity_type == 3:  #EXTERNAL
+        # Type-spezifische Felder
+        if entity_type == 3:  # EXTERNAL
             if not location:
                 raise ValueError("Location ist erforderlich für External Events")
             event_data["entity_metadata"] = {"location": location}
-        elif entity_type in [1, 2]:  #STAGE oder VOICE
+        elif entity_type in [1, 2]:  # STAGE oder VOICE
             if not channel_id:
                 raise ValueError("Channel ID ist erforderlich für Voice/Stage Events")
             event_data["channel_id"] = channel_id
